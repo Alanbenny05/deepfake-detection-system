@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+
+{% block title %}Welcome - Deepfake Detection System{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="py-5">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6">
+                <h1 class="display-4 fw-bold">
+                    <span class="text-primary">AI-Powered</span> Deepfake Detection
+                </h1>
+                <p class="lead mt-3">
+                    Detect AI-generated media with state-of-the-art deep learning technology.
+                    Upload images, videos, or share links from YouTube and Instagram.
+                </p>
+                <div class="mt-4">
+                    {% if user.is_authenticated %}
+                        <a href="{% url 'detector:upload' %}" class="btn btn-primary btn-lg px-4">
+                            <i class="fas fa-upload"></i> Start Detection
+                        </a>
+                    {% else %}
+                        <a href="{% url 'users:register' %}" class="btn btn-primary btn-lg px-4">
+                            <i class="fas fa-user-plus"></i> Get Started
+                        </a>
+                        <a href="{% url 'users:login' %}" class="btn btn-outline-primary btn-lg px-4 ms-2">
+                            <i class="fas fa-sign-in-alt"></i> Login
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="bg-primary text-white p-5 rounded text-center">
+                    <i class="fas fa-robot fa-5x mb-3"></i>
+                    <h3>AI Detection Engine</h3>
+                    <p>Powered by Deep Learning</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="py-5 bg-light">
+    <div class="container">
+        <h2 class="text-center mb-5">Key Features</h2>
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="card h-100 text-center p-4">
+                    <div class="card-body">
+                        <i class="fas fa-image fa-3x text-primary mb-3"></i>
+                        <h5>Image Detection</h5>
+                        <p class="text-muted">Upload JPG, PNG, or WEBP images for instant analysis</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 text-center p-4">
+                    <div class="card-body">
+                        <i class="fas fa-video fa-3x text-primary mb-3"></i>
+                        <h5>Video Analysis</h5>
+                        <p class="text-muted">Analyze MP4, AVI, MOV, or MKV video files</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 text-center p-4">
+                    <div class="card-body">
+                        <i class="fas fa-link fa-3x text-primary mb-3"></i>
+                        <h5>URL Support</h5>
+                        <p class="text-muted">Check YouTube videos and Instagram Reels</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

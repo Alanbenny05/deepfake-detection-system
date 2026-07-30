@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Deepfake Detection{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">
+        <i class="fas fa-chart-pie text-primary"></i> Dashboard
+    </h1>
+    
+    <!-- Statistics Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="stat-card stat-primary">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-white-50">Total Uploads</h6>
+                        <h2 class="text-white">{{ total_uploads }}</h2>
+                    </div>
+                    <i class="fas fa-cloud-upload-alt"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card stat-success">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-white-50">Real</h6>
+                        <h2 class="text-white">{{ real_count }}</h2>
+                    </div>
+                    <i class="fas fa-check-circle"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card stat-danger">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-white-50">AI Generated</h6>
+                        <h2 class="text-white">{{ fake_count }}</h2>
+                    </div>
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card stat-warning">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-white-50">Accuracy</h6>
+                        <h2 class="text-white">{{ accuracy }}%</h2>
+                    </div>
+                    <i class="fas fa-tachometer-alt"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Charts -->
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card p-3">
+                <h5><i class="fas fa-chart-pie text-primary"></i> Detection Distribution</h5>
+                <canvas id="pieChart" height="300"></canvas>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card p-3">
+                <h5><i class="fas fa-chart-line text-success"></i> Detection Trend</h5>
+                <canvas id="lineChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Activity -->
+    <div class="card mt-4">
+        <div class="card-header bg-white">
+            <h5 class="mb-0"><i class="fas fa-clock text-primary"></i> Recent Activity</h5>
+        </div>
+        <div class="card-body">
+            {% if recent_detections %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>File</th>
+                                <th>Type</th>
+                                <th>Result</th>
+                                <th>Confidence</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for detection in recent_detections %}
+                                <tr>
+                                    <td>{{ detection.media.file_name|truncatechars:30 }}</td>
+                                    <td><span class="badge bg-info">{{ detection.media.media_type }}</span></td>
+                                    <td>
+                                        {% if detection.result == 'real' %}
+                                            <span class="badge bg-success">Real</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">AI Generated</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ detection.confidence|floatformat:1 }}%</td>
+                                    <td>{{ detection.processed_at|date:"Y-m-d H:i" }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-center text-muted">No detections yet. <a href="{% url 'detector:upload' %}">Upload your first file</a></p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Pie Chart
+    const ctx1 = document.getElementById('pieChart').getContext('2d');
+    new Chart(ctx1, {
+        type: 'pie',
+        data: {
+            labels: ['Real', 'AI Generated'],
+            datasets: [{
+                data: [{{ real_count }}, {{ fake_count }}],
+                backgroundColor: ['#16A34A', '#DC2626'],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+    
+    // Line Chart
+    const ctx2 = document.getElementById('lineChart').getContext('2d');
+    new Chart(ctx2, {
+        type: 'line',
+        data: {
+            labels: {{ chart_labels|safe }},
+            datasets: [
+                {
+                    label: 'Real',
+                    data: {{ chart_real_data|safe }},
+                    borderColor: '#16A34A',
+                    backgroundColor: 'rgba(22, 163, 74, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                },
+                {
+                    label: 'AI Generated',
+                    data: {{ chart_fake_data|safe }},
+                    borderColor: '#DC2626',
+                    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

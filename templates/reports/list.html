@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% block title %}Reports - Deepfake Detection{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">
+        <i class="fas fa-file-pdf text-danger"></i> Generated Reports
+    </h1>
+    
+    <div class="card">
+        <div class="card-body">
+            {% if reports %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Media File</th>
+                                <th>Result</th>
+                                <th>Confidence</th>
+                                <th>Generated</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for report in reports %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ report.detection.media.file_name|truncatechars:30 }}</td>
+                                    <td>
+                                        {% if report.detection.result == 'real' %}
+                                            <span class="badge bg-success">Real</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">AI Generated</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ report.detection.confidence|floatformat:1 }}%</td>
+                                    <td>{{ report.generated_at|date:"Y-m-d H:i" }}</td>
+                                    <td>
+                                        <a href="{% url 'reports:download_report' report.id %}" 
+                                           class="btn btn-sm btn-danger">
+                                            <i class="fas fa-file-pdf"></i> Download
+                                        </a>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-center text-muted py-4">
+                    <i class="fas fa-file-pdf fa-3x d-block mb-3 text-muted"></i>
+                    No reports generated yet.
+                    <br>
+                    <a href="{% url 'detector:upload' %}" class="btn btn-primary mt-2">
+                        <i class="fas fa-upload"></i> Upload and Generate Report
+                    </a>
+                </p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
