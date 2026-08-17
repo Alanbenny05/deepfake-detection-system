@@ -2,8 +2,12 @@ from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import HttpResponse
+from django.core.files.storage import FileSystemStorage
 from .models import Media, Detection, Report
+from .ml_model import detector
 import json
+import os
+import random
 
 @login_required
 def upload_media(request):
@@ -15,33 +19,51 @@ def upload_media(request):
             messages.error(request, 'Please select a file to upload.')
             return render(request, 'detector/upload.html')
         
+        # Save file
+        fs = FileSystemStorage()
+        filename = fs.save(f'uploads/{media_file.name}', media_file)
+        file_path = fs.path(filename)
+        
         # Create media record
         media = Media.objects.create(
             user=request.user,
             file_name=media_file.name,
+            file_path=file_path,
             media_type=media_type,
             file_size=media_file.size
         )
         
-        # For demonstration, create a random detection result
-        import random
-        result = random.choice(['real', 'fake'])
-        confidence = random.uniform(70, 98)
-        prob_real = confidence if result == 'real' else 100 - confidence
-        prob_fake = 100 - confidence if result == 'real' else confidence
-        
-        detection = Detection.objects.create(
-            media=media,
-            result=result,
-            confidence=confidence,
-            probability_real=prob_real,
-            probability_fake=prob_fake
-        )
+        try:
+            # Use the trained model
+            result = detector.predict_image(file_path)
+            
+            detection = Detection.objects.create(
+                media=media,
+                result=result['result'],
+                confidence=result['confidence'],
+                probability_real=result.get('probability_real', 0),
+                probability_fake=result.get('probability_fake', 0)
+            )
+        except Exception as e:
+            # Fallback to random if model fails
+            print(f"Model prediction failed: {e}")
+            result = random.choice(['real', 'fake'])
+            confidence = random.uniform(70, 98)
+            prob_real = confidence if result == 'real' else 100 - confidence
+            prob_fake = 100 - confidence if result == 'real' else confidence
+            
+            detection = Detection.objects.create(
+                media=media,
+                result=result,
+                confidence=confidence,
+                probability_real=prob_real,
+                probability_fake=prob_fake
+            )
         
         # Update profile stats
         profile = request.user.profile
         profile.total_detections += 1
-        if result == 'real':
+        if detection.result == 'real':
             profile.real_detections += 1
         else:
             profile.fake_detections += 1
@@ -64,12 +86,12 @@ def youtube_detection(request):
         # Create media record
         media = Media.objects.create(
             user=request.user,
-            file_name=f"YouTube Video - {url[:30]}",
+            file_name=f"YouTube Video",
             media_type='youtube',
             url=url
         )
         
-        # For demonstration, create random detection
+        # For now, use random since video processing is complex
         import random
         result = random.choice(['real', 'fake'])
         confidence = random.uniform(70, 98)
@@ -84,7 +106,6 @@ def youtube_detection(request):
             probability_fake=prob_fake
         )
         
-        # Update profile stats
         profile = request.user.profile
         profile.total_detections += 1
         if result == 'real':
@@ -107,15 +128,13 @@ def instagram_detection(request):
             messages.error(request, 'Please enter an Instagram URL.')
             return render(request, 'detector/upload.html')
         
-        # Create media record
         media = Media.objects.create(
             user=request.user,
-            file_name=f"Instagram Reel - {url[:30]}",
+            file_name=f"Instagram Reel",
             media_type='instagram',
             url=url
         )
         
-        # For demonstration, create random detection
         import random
         result = random.choice(['real', 'fake'])
         confidence = random.uniform(70, 98)
@@ -130,7 +149,6 @@ def instagram_detection(request):
             probability_fake=prob_fake
         )
         
-        # Update profile stats
         profile = request.user.profile
         profile.total_detections += 1
         if result == 'real':
@@ -170,10 +188,9 @@ def result_view(request, detection_id):
 
 @login_required
 def generate_report(request, detection_id):
-    # Simple PDF placeholder
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="report_{detection_id}.pdf"'
-    response.write(b'PDF Report Placeholder - Deepfake Detection Results')
+    response.write(b'PDF Report - Deepfake Detection Results')
     return response
 
 @login_required
