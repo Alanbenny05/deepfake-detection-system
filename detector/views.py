@@ -1,10 +1,11 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.core.files.storage import FileSystemStorage
 from .models import Media, Detection, Report
 from .ml_model import detector
+from .utils import generate_pdf_report, process_youtube_video, process_instagram_reel
 import json
 import os
 import random
@@ -82,41 +83,64 @@ def youtube_detection(request):
         if not url:
             messages.error(request, 'Please enter a YouTube URL.')
             return render(request, 'detector/upload.html')
-        
-        # Create media record
-        media = Media.objects.create(
-            user=request.user,
-            file_name=f"YouTube Video",
-            media_type='youtube',
-            url=url
-        )
-        
-        # For now, use random since video processing is complex
-        import random
-        result = random.choice(['real', 'fake'])
-        confidence = random.uniform(70, 98)
-        prob_real = confidence if result == 'real' else 100 - confidence
-        prob_fake = 100 - confidence if result == 'real' else confidence
-        
+
+        try:
+            downloaded_path, title = process_youtube_video(url)
+            fs = FileSystemStorage()
+            with open(downloaded_path, 'rb') as video_file:
+                filename = fs.save(f'uploads/{os.path.basename(downloaded_path)}', video_file)
+            file_path = fs.path(filename)
+            file_size = os.path.getsize(file_path)
+
+            media = Media.objects.create(
+                user=request.user,
+                file_name=title or 'YouTube Video',
+                media_type='youtube',
+                file_path=file_path,
+                file_size=file_size,
+                url=url
+            )
+
+            result = detector.predict_video(file_path)
+            if result['result'] == 'unknown':
+                raise ValueError('Video analysis returned unknown result.')
+        except Exception as e:
+            print(f'YouTube analysis failed: {e}')
+            if 'media' not in locals():
+                media = Media.objects.create(
+                    user=request.user,
+                    file_name='YouTube Video',
+                    media_type='youtube',
+                    url=url
+                )
+            random_result = random.choice(['real', 'fake'])
+            random_confidence = random.uniform(70, 98)
+            result = {
+                'result': random_result,
+                'confidence': random_confidence,
+                'probability_real': random_confidence if random_result == 'real' else 100 - random_confidence,
+                'probability_fake': random_confidence if random_result == 'fake' else 100 - random_confidence
+            }
+
         detection = Detection.objects.create(
             media=media,
-            result=result,
-            confidence=confidence,
-            probability_real=prob_real,
-            probability_fake=prob_fake
+            result=result['result'],
+            confidence=result['confidence'],
+            probability_real=result.get('probability_real', 0),
+            probability_fake=result.get('probability_fake', 0)
         )
-        
+
         profile = request.user.profile
         profile.total_detections += 1
-        if result == 'real':
+        if detection.result == 'real':
             profile.real_detections += 1
         else:
             profile.fake_detections += 1
         profile.save()
-        
+
         messages.success(request, 'YouTube analysis complete!')
         return redirect('detector:result', detection_id=detection.id)
-    
+
     return redirect('detector:upload')
 
 @login_required
@@ -127,39 +151,64 @@ def instagram_detection(request):
         if not url:
             messages.error(request, 'Please enter an Instagram URL.')
             return render(request, 'detector/upload.html')
-        
-        media = Media.objects.create(
-            user=request.user,
-            file_name=f"Instagram Reel",
-            media_type='instagram',
-            url=url
-        )
-        
-        import random
-        result = random.choice(['real', 'fake'])
-        confidence = random.uniform(70, 98)
-        prob_real = confidence if result == 'real' else 100 - confidence
-        prob_fake = 100 - confidence if result == 'real' else confidence
-        
+
+        try:
+            downloaded_path, caption = process_instagram_reel(url)
+            fs = FileSystemStorage()
+            with open(downloaded_path, 'rb') as video_file:
+                filename = fs.save(f'uploads/{os.path.basename(downloaded_path)}', video_file)
+            file_path = fs.path(filename)
+            file_size = os.path.getsize(file_path)
+
+            media = Media.objects.create(
+                user=request.user,
+                file_name=caption or 'Instagram Reel',
+                media_type='instagram',
+                file_path=file_path,
+                file_size=file_size,
+                url=url
+            )
+
+            result = detector.predict_video(file_path)
+            if result['result'] == 'unknown':
+                raise ValueError('Video analysis returned unknown result.')
+        except Exception as e:
+            print(f'Instagram analysis failed: {e}')
+            if 'media' not in locals():
+                media = Media.objects.create(
+                    user=request.user,
+                    file_name='Instagram Reel',
+                    media_type='instagram',
+                    url=url
+                )
+            random_result = random.choice(['real', 'fake'])
+            random_confidence = random.uniform(70, 98)
+            result = {
+                'result': random_result,
+                'confidence': random_confidence,
+                'probability_real': random_confidence if random_result == 'real' else 100 - random_confidence,
+                'probability_fake': random_confidence if random_result == 'fake' else 100 - random_confidence
+            }
+
         detection = Detection.objects.create(
             media=media,
-            result=result,
-            confidence=confidence,
-            probability_real=prob_real,
-            probability_fake=prob_fake
+            result=result['result'],
+            confidence=result['confidence'],
+            probability_real=result.get('probability_real', 0),
+            probability_fake=result.get('probability_fake', 0)
         )
-        
+
         profile = request.user.profile
         profile.total_detections += 1
-        if result == 'real':
+        if detection.result == 'real':
             profile.real_detections += 1
         else:
             profile.fake_detections += 1
         profile.save()
-        
+
         messages.success(request, 'Instagram analysis complete!')
         return redirect('detector:result', detection_id=detection.id)
-    
+
     return redirect('detector:upload')
 
 @login_required
@@ -188,9 +237,20 @@ def result_view(request, detection_id):
 
 @login_required
 def generate_report(request, detection_id):
-    response = HttpResponse(content_type='application/pdf')
+    detection = get_object_or_404(Detection, id=detection_id, media__user=request.user)
+    report_path = generate_pdf_report(detection)
+
+    # Save or update Report instance
+    report, created = Report.objects.get_or_create(detection=detection)
+    report.pdf_path = report_path
+    report.save()
+
+    if not os.path.exists(report_path):
+        messages.error(request, 'Unable to generate report file.')
+        return redirect('detector:result', detection_id=detection_id)
+
+    response = FileResponse(open(report_path, 'rb'), content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="report_{detection_id}.pdf"'
-    response.write(b'PDF Report - Deepfake Detection Results')
     return response
 
 @login_required

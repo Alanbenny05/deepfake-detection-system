@@ -65,23 +65,30 @@ def process_instagram_reel(url):
         post_metadata_txt_pattern=""
     )
     
-    # Create temp directory
     temp_dir = tempfile.mkdtemp()
-    os.chdir(temp_dir)
-    
-    # Download reel
-    post = instaloader.Post.from_url(url)
-    loader.download_post(post, target=f"reel_{post.shortcode}")
-    
-    # Find video file
-    video_files = [f for f in os.listdir() if f.endswith('.mp4')]
-    if not video_files:
-        raise ValueError("No video file found")
-    
-    video_path = os.path.join(temp_dir, video_files[0])
-    caption = post.caption or "Instagram Reel"
-    
-    return video_path, caption
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(temp_dir)
+
+        # Download reel
+        post = instaloader.Post.from_url(url)
+        loader.download_post(post, target=f"reel_{post.shortcode}")
+
+        # Search recursively for the video file
+        video_files = []
+        for root, _, files in os.walk(temp_dir):
+            for file_name in files:
+                if file_name.lower().endswith('.mp4'):
+                    video_files.append(os.path.join(root, file_name))
+
+        if not video_files:
+            raise ValueError("No video file found")
+
+        video_path = video_files[0]
+        caption = post.caption or "Instagram Reel"
+        return video_path, caption
+    finally:
+        os.chdir(original_cwd)
 
 def generate_pdf_report(detection):
     """Generate PDF report for detection"""

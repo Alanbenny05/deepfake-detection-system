@@ -25,12 +25,12 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" data-bs-toggle="tab" href="#youtubeTab">
-                                <i class="fab fa-youtube"></i> YouTube
+                                <i class="fab fa-youtube"></i> YouTube Link
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" data-bs-toggle="tab" href="#instagramTab">
-                                <i class="fab fa-instagram"></i> Instagram
+                                <i class="fab fa-instagram"></i> Instagram Reel
                             </a>
                         </li>
                     </ul>
@@ -128,104 +128,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Image upload
-    const imageDropZone = document.getElementById('imageDropZone');
-    const imageInput = document.getElementById('imageInput');
-    
-    imageDropZone.addEventListener('click', () => imageInput.click());
-    
-    imageDropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        imageDropZone.classList.add('dragover');
-    });
-    
-    imageDropZone.addEventListener('dragleave', () => {
-        imageDropZone.classList.remove('dragover');
-    });
-    
-    imageDropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        imageDropZone.classList.remove('dragover');
-        imageInput.files = e.dataTransfer.files;
-        document.getElementById('imageUploadForm').submit();
-    });
-    
-    imageInput.addEventListener('change', () => {
-        document.getElementById('imageUploadForm').submit();
-    });
-    
-    // Video upload
-    const videoDropZone = document.getElementById('videoDropZone');
-    const videoInput = document.getElementById('videoInput');
-    
-    videoDropZone.addEventListener('click', () => videoInput.click());
-    
-    videoDropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        videoDropZone.classList.add('dragover');
-    });
-    
-    videoDropZone.addEventListener('dragleave', () => {
-        videoDropZone.classList.remove('dragover');
-    });
-    
-    videoDropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        videoDropZone.classList.remove('dragover');
-        videoInput.files = e.dataTransfer.files;
-        document.getElementById('videoUploadForm').submit();
-    });
-    
-    videoInput.addEventListener('change', () => {
-        document.getElementById('videoUploadForm').submit();
-    });
-    
-    // Show processing modal on form submit
-    const forms = document.querySelectorAll('form');
-    forms.forEach(form => {
-        form.addEventListener('submit', function(e) {
-            const hasFile = form.querySelector('input[type="file"]');
-            const hasUrl = form.querySelector('input[name="url"]');
-            
-            if (hasFile && hasFile.files.length > 0) {
-                e.preventDefault();
-                showProcessingModal(form);
-            } else if (hasUrl && hasUrl.value) {
-                e.preventDefault();
-                showProcessingModal(form);
-            }
-        });
-    });
-    
-    function showProcessingModal(form) {
-        const modal = new bootstrap.Modal(document.getElementById('processingModal'));
-        modal.show();
-        
-        let progress = 0;
-        const progressBar = document.querySelector('.progress-bar');
-        const statusMessage = document.getElementById('statusMessage');
-        const messages = [
-            'Preprocessing media...',
-            'Detecting faces...',
-            'Extracting features...',
-            'Running CNN model...',
-            'Generating results...'
-        ];
-        
-        const interval = setInterval(() => {
-            progress += 20;
-            progressBar.style.width = `${progress}%`;
-            const index = Math.floor(progress / 20) - 1;
-            if (index < messages.length) {
-                statusMessage.textContent = messages[index] || 'Processing...';
-            }
-            
-            if (progress >= 100) {
-                clearInterval(interval);
-                form.submit();
-            }
-        }, 800);
-    }
+    if (typeof setupUploadHandlers === 'function') setupUploadHandlers();
 });
 </script>
 {% endblock %}
