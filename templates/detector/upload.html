@@ -78,8 +78,13 @@
                                 {% csrf_token %}
                                 <div class="mb-3">
                                     <label for="youtube_url" class="form-label">YouTube URL</label>
-                                    <input type="url" name="url" id="youtube_url" class="form-control" 
-                                           placeholder="https://www.youtube.com/watch?v=..." required>
+                                    <div class="input-group">
+                                        <input type="url" name="url" id="youtube_url" class="form-control" 
+                                               placeholder="https://www.youtube.com/watch?v=..." required>
+                                        <button class="btn btn-outline-secondary" type="button" id="clear_youtube_btn" onclick="document.getElementById('youtube_url').value = ''; document.getElementById('youtube_url').focus(); const alert = this.closest('form').querySelector('.custom-url-alert'); if (alert) alert.remove();">
+                                            <i class="fas fa-times"></i> Clear
+                                        </button>
+                                    </div>
                                 </div>
                                 <button type="submit" class="btn btn-danger mt-3 w-100">
                                     <i class="fab fa-youtube"></i> Analyze YouTube Video
@@ -93,8 +98,13 @@
                                 {% csrf_token %}
                                 <div class="mb-3">
                                     <label for="instagram_url" class="form-label">Instagram Reel URL</label>
-                                    <input type="url" name="url" id="instagram_url" class="form-control" 
-                                           placeholder="https://www.instagram.com/reel/..." required>
+                                    <div class="input-group">
+                                        <input type="url" name="url" id="instagram_url" class="form-control" 
+                                               placeholder="https://www.instagram.com/reel/..." required>
+                                        <button class="btn btn-outline-secondary" type="button" id="clear_instagram_btn" onclick="document.getElementById('instagram_url').value = ''; document.getElementById('instagram_url').focus(); const alert = this.closest('form').querySelector('.custom-url-alert'); if (alert) alert.remove();">
+                                            <i class="fas fa-times"></i> Clear
+                                        </button>
+                                    </div>
                                 </div>
                                 <button type="submit" class="btn btn-danger mt-3 w-100">
                                     <i class="fab fa-instagram"></i> Analyze Instagram Reel
