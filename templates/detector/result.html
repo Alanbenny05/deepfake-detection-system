@@ -1,101 +1,470 @@
 {% extends 'base.html' %}
+{% load static %}
 
-{% block title %}Detection Result - Deepfake Detection{% endblock %}
+{% block title %}Detection Result – Deepfake Detection{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ─── Result page styles ─────────────────────────────────────── */
+.result-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid rgba(255,255,255,0.07);
+}
+.classification-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1.4rem;
+    border-radius: 50px;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.badge-HIGH_CONFIDENCE_REAL { background: rgba(34,197,94,0.15); color: #22c55e; border: 1.5px solid #22c55e; }
+.badge-LIKELY_REAL           { background: rgba(74,222,128,0.12); color: #4ade80; border: 1.5px solid #4ade80; }
+.badge-UNCERTAIN             { background: rgba(250,204,21,0.12); color: #fbbf24; border: 1.5px solid #fbbf24; }
+.badge-LIKELY_FAKE           { background: rgba(251,146,60,0.15); color: #fb923c; border: 1.5px solid #fb923c; }
+.badge-HIGH_CONFIDENCE_FAKE  { background: rgba(239,68,68,0.15);  color: #ef4444; border: 1.5px solid #ef4444; }
+
+.confidence-ring {
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 6px solid;
+    flex-shrink: 0;
+}
+.ring-real     { border-color: #22c55e; }
+.ring-fake     { border-color: #ef4444; }
+.ring-uncertain{ border-color: #fbbf24; }
+
+.signal-card {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 1.2rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    height: 100%;
+}
+.signal-card .signal-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+.icon-cnn       { background: rgba(91,69,211,0.12); color: #5b45d3; }
+.icon-forensic  { background: rgba(59,130,246,0.12); color: #3b82f6; }
+.icon-provenance{ background: rgba(234,179,8,0.12);  color: #ca8a04; }
+.icon-video     { background: rgba(239,68,68,0.12);  color: #ef4444; }
+
+.score-bar-wrap { background: #f1f5f9; border-radius: 6px; height: 8px; overflow: hidden; }
+.score-bar-fill { height: 100%; border-radius: 6px; transition: width 1s ease; }
+.bar-real { background: linear-gradient(90deg, #22c55e, #4ade80); }
+.bar-fake { background: linear-gradient(90deg, #ef4444, #fb923c); }
+.bar-uncertain { background: linear-gradient(90deg, #fbbf24, #fb923c); }
+.bar-neutral { background: linear-gradient(90deg, #94a3b8, #cbd5e1); }
+
+.status-pill {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.2rem 0.7rem; border-radius: 20px;
+    font-size: 0.78rem; font-weight: 600;
+}
+.pill-detected     { background: rgba(239,68,68,0.1); color: #dc2626; }
+.pill-not-detected { background: rgba(34,197,94,0.1); color: #16a34a; }
+.pill-unavailable  { background: rgba(148,163,184,0.15); color: #64748b; }
+.pill-error        { background: rgba(239,68,68,0.08); color: #ef4444; }
+
+.explanation-box {
+    background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
+    border-left: 4px solid #5b45d3;
+    border-radius: 0 8px 8px 0;
+    padding: 1.1rem 1.3rem;
+}
+.tech-details { background: #0f172a; border-radius: 12px; color: #e2e8f0; }
+.tech-key     { color: #94a3b8; font-size: 0.82rem; }
+.tech-val     { color: #f8fafc; font-size: 0.82rem; font-weight: 600; }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <div class="row">
-        <div class="col-lg-8 mx-auto">
-            <div class="card fade-in-up">
-                <div class="card-header bg-white">
-                    <h4 class="mb-0">
-                        <i class="fas fa-check-circle text-success"></i> Detection Complete
-                    </h4>
-                </div>
-                <div class="card-body">
-                    <!-- Result Badge -->
-                    <div class="text-center mb-4">
-                        <h3>Result</h3>
-                        {% if is_real %}
-                            <span class="result-badge real-badge">
-                                <i class="fas fa-check-circle"></i> REAL
-                            </span>
-                        {% else %}
-                            <span class="result-badge fake-badge">
-                                <i class="fas fa-exclamation-triangle"></i> AI GENERATED
-                            </span>
-                        {% endif %}
-                    </div>
-                    
-                    <!-- Confidence -->
-                    <div class="mb-4">
-                        <h5>Confidence Score</h5>
-                        <div class="progress" style="height: 30px;">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated 
-                                {% if is_real %}bg-success{% else %}bg-danger{% endif %}"
-                                style="width: {{ detection.confidence }}%;">
-                                {{ detection.confidence|floatformat:1 }}%
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Pie Chart -->
-                    <div class="row gx-4 align-items-center">
-                        <div class="col-md-6 d-flex justify-content-center align-items-center">
-                            <canvas id="resultPieChart" class="w-100" style="max-width:100%; height:auto;" height="200"></canvas>
-                        </div>
-                        <div class="col-md-6">
-                            <h5>Detection Details</h5>
-                            <table class="table table-sm">
-                                <tr>
-                                    <td><strong>File Name:</strong></td>
-                                    <td>{{ media.file_name|truncatechars:30 }}</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Media Type:</strong></td>
-                                    <td>{{ media.media_type|capfirst }}</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Probability (Real):</strong></td>
-                                    <td>{{ detection.probability_real|floatformat:1 }}%</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Probability (Fake):</strong></td>
-                                    <td>{{ detection.probability_fake|floatformat:1 }}%</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Processing Date:</strong></td>
-                                    <td>{{ detection.processed_at|date:"Y-m-d H:i:s" }}</td>
-                                </tr>
-                            </table>
-                        </div>
-                    </div>
-                    
-                    <!-- Actions -->
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-center mt-4">
-                        <a href="{% url 'detector:generate_report' detection.id %}" class="btn btn-primary">
-                            <i class="fas fa-file-pdf"></i> Download PDF Report
-                        </a>
-                        <a href="{% url 'detector:upload' %}" class="btn btn-success">
-                            <i class="fas fa-plus"></i> Analyze Another
-                        </a>
-                        <a href="{% url 'detector:detection_history' %}" class="btn btn-secondary">
-                            <i class="fas fa-history"></i> View History
-                        </a>
-                    </div>
-                </div>
-            </div>
+<div class="container mt-4 pb-5">
+
+  <!-- ── Hero: classification + confidence ───────────────────── -->
+  <div class="result-hero">
+    <div class="d-flex flex-column flex-md-row align-items-center justify-content-between gap-3">
+
+      <div>
+        <p class="text-white-50 mb-1" style="font-size:.85rem;">
+          <i class="fas fa-check-circle me-1"></i> Analysis Complete
+          {% if detection.processing_time %}
+            <span class="ms-2">· {{ detection.processing_time }}s</span>
+          {% endif %}
+        </p>
+        <h2 class="text-white mb-2" style="font-size:1.5rem;">
+          {{ media.file_name|truncatechars:50 }}
+        </h2>
+
+        <!-- Classification badge -->
+        <span class="classification-badge badge-{{ classification }}">
+          {% if classification == 'HIGH_CONFIDENCE_REAL' %}
+            <i class="fas fa-shield-alt"></i> High Confidence Real
+          {% elif classification == 'LIKELY_REAL' %}
+            <i class="fas fa-check-circle"></i> Likely Real
+          {% elif classification == 'UNCERTAIN' %}
+            <i class="fas fa-question-circle"></i> Uncertain
+          {% elif classification == 'LIKELY_FAKE' %}
+            <i class="fas fa-exclamation-triangle"></i> Likely Fake
+          {% else %}
+            <i class="fas fa-times-circle"></i> High Confidence Fake
+          {% endif %}
+        </span>
+
+        <div class="mt-3 d-flex flex-wrap gap-2">
+          <span class="badge bg-secondary bg-opacity-50 text-white">
+            <i class="fas fa-{{ media.media_type }}"></i>
+            {% if media.media_type == 'youtube' %}
+              <i class="fab fa-youtube"></i>
+            {% elif media.media_type == 'instagram' %}
+              <i class="fab fa-instagram"></i>
+            {% elif media.media_type == 'video' %}
+              <i class="fas fa-video"></i>
+            {% else %}
+              <i class="fas fa-image"></i>
+            {% endif %}
+            {{ media.media_type|capfirst }}
+          </span>
+          <span class="badge bg-secondary bg-opacity-50 text-white">
+            <i class="fas fa-calendar me-1"></i>{{ detection.processed_at|date:"Y-m-d H:i" }}
+          </span>
+          {% if detection.cnn_mode %}
+          <span class="badge bg-secondary bg-opacity-50 text-white">
+            <i class="fas fa-microchip me-1"></i>
+            {% if detection.cnn_mode == 'cnn' %}CNN Model{% elif detection.cnn_mode == 'heuristic' %}Heuristic Mode{% else %}{{ detection.cnn_mode }}{% endif %}
+          </span>
+          {% endif %}
         </div>
+      </div>
+
+      <!-- Confidence ring -->
+      <div class="text-center">
+        <div class="confidence-ring {% if is_real %}ring-real{% elif is_fake %}ring-fake{% else %}ring-uncertain{% endif %}">
+          <span style="font-size:1.6rem; font-weight:800;
+            color:{% if is_real %}#22c55e{% elif is_fake %}#ef4444{% else %}#fbbf24{% endif %};">
+            {{ detection.confidence|floatformat:0 }}%
+          </span>
+          <span style="font-size:0.68rem; color:#94a3b8; margin-top:-2px;">confidence</span>
+        </div>
+        <p class="text-white-50 mt-2" style="font-size:0.78rem;">
+          {% if is_uncertain %}⚠ Inconclusive{% elif is_real %}✓ Authentic{% else %}✗ Manipulated{% endif %}
+        </p>
+      </div>
+
     </div>
+  </div>
+
+  <div class="row g-3">
+
+    <!-- ── Evidence / Signal Breakdown ──────────────────────── -->
+    <div class="col-lg-8">
+      <h5 class="fw-bold mb-3"><i class="fas fa-microscope text-primary me-2"></i>Evidence Breakdown</h5>
+
+      <div class="row g-3">
+
+        <!-- CNN Analysis -->
+        <div class="col-md-6">
+          <div class="signal-card">
+            <div class="d-flex align-items-center gap-2 mb-3">
+              <div class="signal-icon icon-cnn"><i class="fas fa-brain"></i></div>
+              <div>
+                <div class="fw-semibold" style="font-size:.9rem;">CNN Model Analysis</div>
+                <div style="font-size:.75rem; color:#64748b;">
+                  {% if detection.cnn_mode == 'cnn' %}Trained CNN{% elif detection.cnn_mode == 'heuristic' %}Heuristic Fallback{% else %}{% if detection.cnn_mode %}{{ detection.cnn_mode }}{% else %}Unknown{% endif %}{% endif %}
+                </div>
+              </div>
+            </div>
+            {% if detection.cnn_score is not None %}
+              <div class="d-flex justify-content-between mb-1">
+                <small class="text-muted">Fake probability</small>
+                <small class="fw-bold">{{ detection.cnn_score|floatformat:3 }}</small>
+              </div>
+              <div class="score-bar-wrap">
+                <div class="score-bar-fill {% if detection.cnn_score > 0.6 %}bar-fake{% elif detection.cnn_score < 0.4 %}bar-real{% else %}bar-uncertain{% endif %}"
+                     style="width: {{ detection.cnn_score|floatformat:0 }}0%;"></div>
+              </div>
+              <div class="mt-2" style="font-size:.78rem; color:#64748b;">
+                {% if detection.face_found %}Face detected and analysed.{% else %}No face detected — full image analysed.{% endif %}
+              </div>
+            {% else %}
+              <div class="text-muted" style="font-size:.85rem;"><i class="fas fa-times-circle me-1 text-warning"></i>CNN analysis unavailable.</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Forensic Analysis -->
+        <div class="col-md-6">
+          <div class="signal-card">
+            <div class="d-flex align-items-center gap-2 mb-3">
+              <div class="signal-icon icon-forensic"><i class="fas fa-search"></i></div>
+              <div>
+                <div class="fw-semibold" style="font-size:.9rem;">Forensic Analysis</div>
+                <div style="font-size:.75rem; color:#64748b;">ELA · DCT · Noise · Saturation</div>
+              </div>
+            </div>
+            {% if detection.forensic_score is not None %}
+              <div class="d-flex justify-content-between mb-1">
+                <small class="text-muted">Suspicion score</small>
+                <small class="fw-bold">{{ detection.forensic_score|floatformat:3 }}</small>
+              </div>
+              <div class="score-bar-wrap">
+                <div class="score-bar-fill {% if detection.forensic_score > 0.6 %}bar-fake{% elif detection.forensic_score < 0.4 %}bar-real{% else %}bar-uncertain{% endif %}"
+                     style="width: {{ detection.forensic_score|floatformat:0 }}0%;"></div>
+              </div>
+              {% if forensic_flags %}
+                <div class="mt-2">
+                  {% for flag in forensic_flags %}
+                    <div style="font-size:.73rem; color:#ef4444;"><i class="fas fa-exclamation-circle me-1"></i>{{ flag }}</div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <div class="mt-2" style="font-size:.78rem; color:#64748b;">No significant forensic anomalies detected.</div>
+              {% endif %}
+            {% else %}
+              <div class="text-muted" style="font-size:.85rem;"><i class="fas fa-times-circle me-1 text-warning"></i>Forensic analysis unavailable.</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Provenance / SynthID -->
+        <div class="col-md-6">
+          <div class="signal-card">
+            <div class="d-flex align-items-center gap-2 mb-3">
+              <div class="signal-icon icon-provenance"><i class="fas fa-fingerprint"></i></div>
+              <div>
+                <div class="fw-semibold" style="font-size:.9rem;">Provenance / Metadata</div>
+                <div style="font-size:.75rem; color:#64748b;">EXIF · XMP · C2PA markers</div>
+              </div>
+            </div>
+
+            {% with prov=detection.provenance_status %}
+              {% if prov == 'detected' %}
+                <span class="status-pill pill-detected"><i class="fas fa-exclamation-circle"></i> AI Markers Detected</span>
+                <div class="mt-2">
+                  {% for marker in provenance_markers %}
+                    <div style="font-size:.73rem; color:#dc2626; margin-top:2px;">
+                      <i class="fas fa-tag me-1"></i>{{ marker|truncatechars:80 }}
+                    </div>
+                  {% endfor %}
+                </div>
+              {% elif prov == 'not_detected' %}
+                <span class="status-pill pill-not-detected"><i class="fas fa-check-circle"></i> No AI Markers Found</span>
+                <div class="mt-2" style="font-size:.75rem; color:#64748b;">
+                  Absence of markers does not confirm authenticity — metadata can be stripped.
+                </div>
+              {% elif prov == 'error' %}
+                <span class="status-pill pill-error"><i class="fas fa-times-circle"></i> Check Error</span>
+                <div class="mt-1" style="font-size:.75rem; color:#64748b;">Provenance check encountered an error.</div>
+              {% else %}
+                <span class="status-pill pill-unavailable"><i class="fas fa-minus-circle"></i> Not Available</span>
+                <div class="mt-2" style="font-size:.75rem; color:#64748b;">
+                  Provenance verification is not available for this media type.<br>
+                  Analysis relies on CNN and forensic signals.
+                </div>
+              {% endif %}
+            {% endwith %}
+          </div>
+        </div>
+
+        <!-- Video Analysis (only shown if video) -->
+        {% if detection.frames_analyzed is not None %}
+        <div class="col-md-6">
+          <div class="signal-card">
+            <div class="d-flex align-items-center gap-2 mb-3">
+              <div class="signal-icon icon-video"><i class="fas fa-film"></i></div>
+              <div>
+                <div class="fw-semibold" style="font-size:.9rem;">Video Frame Analysis</div>
+                <div style="font-size:.75rem; color:#64748b;">Temporal consistency check</div>
+              </div>
+            </div>
+            <div class="row g-2 text-center">
+              <div class="col-4">
+                <div style="font-size:1.3rem; font-weight:800; color:#3b82f6;">{{ detection.frames_analyzed }}</div>
+                <div style="font-size:.7rem; color:#64748b;">Frames<br>Analysed</div>
+              </div>
+              <div class="col-4">
+                <div style="font-size:1.3rem; font-weight:800; color:#ef4444;">{{ detection.suspicious_frames }}</div>
+                <div style="font-size:.7rem; color:#64748b;">Suspicious<br>Frames</div>
+              </div>
+              <div class="col-4">
+                <div style="font-size:1.3rem; font-weight:800; color:{% if detection.fake_frame_pct > 50 %}#ef4444{% else %}#22c55e{% endif %};">
+                  {{ detection.fake_frame_pct|floatformat:0 }}%
+                </div>
+                <div style="font-size:.7rem; color:#64748b;">Fake Frame<br>Rate</div>
+              </div>
+            </div>
+            {% if detection.temporal_consistency is not None %}
+            <div class="mt-3">
+              <div class="d-flex justify-content-between mb-1">
+                <small class="text-muted">Temporal consistency</small>
+                <small class="fw-bold">{{ detection.temporal_consistency|floatformat:2 }}</small>
+              </div>
+              <div class="score-bar-wrap">
+                <div class="score-bar-fill bar-real"
+                     style="width: {% widthratio detection.temporal_consistency 1 100 %}%;"></div>
+              </div>
+              <div style="font-size:.73rem; color:#64748b; margin-top:4px;">
+                {% if detection.temporal_consistency > 0.7 %}Consistent predictions across frames.
+                {% elif detection.temporal_consistency > 0.4 %}Moderate variation across frames.
+                {% else %}High variation — predictions inconsistent across frames.
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+
+      </div><!-- /row signals -->
+
+      <!-- Explanation -->
+      {% if detection.explanation %}
+      <div class="explanation-box mt-3">
+        <h6 class="fw-bold mb-1" style="color:#5b45d3;"><i class="fas fa-info-circle me-1"></i>Analysis Explanation</h6>
+        <p class="mb-0" style="font-size:.87rem; color:#334155; line-height:1.65;">{{ detection.explanation }}</p>
+      </div>
+      {% endif %}
+
+    </div><!-- /col-8 -->
+
+    <!-- ── Right sidebar: chart + actions ───────────────────── -->
+    <div class="col-lg-4">
+
+      <!-- Probability Chart -->
+      <div class="card mb-3" style="border-radius:12px;">
+        <div class="card-body">
+          <h6 class="fw-bold mb-3"><i class="fas fa-chart-pie text-primary me-2"></i>Probability Distribution</h6>
+          <canvas id="resultPieChart" height="200"></canvas>
+          <div class="row text-center mt-3 g-0">
+            <div class="col-6">
+              <div style="font-size:1.1rem; font-weight:800; color:#22c55e;">{{ detection.probability_real|floatformat:1 }}%</div>
+              <div style="font-size:.73rem; color:#64748b;">Probability Real</div>
+            </div>
+            <div class="col-6">
+              <div style="font-size:1.1rem; font-weight:800; color:#ef4444;">{{ detection.probability_fake|floatformat:1 }}%</div>
+              <div style="font-size:.73rem; color:#64748b;">Probability Fake</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detection threshold info -->
+      <div class="card mb-3" style="border-radius:12px; border: 1px solid #e2e8f0;">
+        <div class="card-body py-3">
+          <h6 class="fw-bold mb-2" style="font-size:.85rem;"><i class="fas fa-sliders-h text-primary me-2"></i>Score Details</h6>
+          <table class="table table-sm mb-0" style="font-size:.82rem;">
+            <tr>
+              <td class="text-muted">Final Ensemble Score</td>
+              <td class="fw-bold text-end">{% if detection.final_score is not None %}{{ detection.final_score|floatformat:3 }}{% else %}N/A{% endif %}</td>
+            </tr>
+            <tr>
+              <td class="text-muted">Classification</td>
+              <td class="fw-bold text-end">{{ classification_label }}</td>
+            </tr>
+            <tr>
+              <td class="text-muted">Confidence</td>
+              <td class="fw-bold text-end">{{ detection.confidence|floatformat:1 }}%</td>
+            </tr>
+            {% if detection.cnn_score is not None %}
+            <tr>
+              <td class="text-muted">CNN Score</td>
+              <td class="fw-bold text-end">{{ detection.cnn_score|floatformat:3 }}</td>
+            </tr>
+            {% endif %}
+            {% if detection.forensic_score is not None %}
+            <tr>
+              <td class="text-muted">Forensic Score</td>
+              <td class="fw-bold text-end">{{ detection.forensic_score|floatformat:3 }}</td>
+            </tr>
+            {% endif %}
+          </table>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="d-grid gap-2">
+        <a href="{% url 'detector:generate_report' detection.id %}" class="btn btn-primary">
+          <i class="fas fa-file-pdf me-2"></i>Download PDF Report
+        </a>
+        <a href="{% url 'detector:upload' %}" class="btn btn-outline-success">
+          <i class="fas fa-plus me-2"></i>Analyse Another
+        </a>
+        <a href="{% url 'detector:detection_history' %}" class="btn btn-outline-secondary">
+          <i class="fas fa-history me-2"></i>View History
+        </a>
+      </div>
+
+      <!-- Technical details (collapsible) -->
+      <div class="mt-3">
+        <button class="btn btn-outline-secondary btn-sm w-100" type="button"
+                data-bs-toggle="collapse" data-bs-target="#techDetails">
+          <i class="fas fa-code me-1"></i>Technical Details
+        </button>
+        <div class="collapse mt-2" id="techDetails">
+          <div class="tech-details p-3">
+            <div class="mb-1"><span class="tech-key">Detection ID:</span> <span class="tech-val">#{{ detection.id }}</span></div>
+            <div class="mb-1"><span class="tech-key">Model Version:</span> <span class="tech-val">{{ detection.model_version }}</span></div>
+            <div class="mb-1"><span class="tech-key">CNN Mode:</span> <span class="tech-val">{{ detection.cnn_mode|default:"N/A" }}</span></div>
+            <div class="mb-1"><span class="tech-key">Provenance:</span> <span class="tech-val">{{ detection.provenance_status }}</span></div>
+            <div class="mb-1"><span class="tech-key">Face Detected:</span> <span class="tech-val">{% if detection.face_found %}Yes{% elif detection.face_found is None %}N/A{% else %}No{% endif %}</span></div>
+            <div class="mb-1"><span class="tech-key">Source Type:</span> <span class="tech-val">{{ detection.source_type }}</span></div>
+            <div class="mb-1"><span class="tech-key">Processing Time:</span> <span class="tech-val">{{ detection.processing_time|default:"N/A" }}s</span></div>
+            <div class="mb-1"><span class="tech-key">Classification:</span> <span class="tech-val">{{ classification }}</span></div>
+            <hr style="border-color:#334155;">
+            <div style="font-size:.73rem; color:#64748b;">
+              Ensemble weights: CNN 42% · Forensic 38% · Provenance 20%<br>
+              Thresholds: ≥0.80 High Fake · ≥0.60 Likely Fake · 0.40–0.60 Uncertain<br>
+              · ≤0.40 Likely Real · ≤0.20 High Real
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /col-4 -->
+
+  </div><!-- /row -->
+
+  <!-- Disclaimer -->
+  <div class="alert alert-warning mt-4" role="alert" style="font-size:.83rem; border-radius:10px;">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    <strong>Important:</strong> Deepfake detection is probabilistic. This system provides its best estimate based on available signals.
+    Results should not be used as sole evidence in legal proceedings without expert human review.
+    A result of <em>Uncertain</em> means the available evidence is insufficient for a confident determination.
+  </div>
+
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 window.resultData = {
-    probability_real: {{ detection.probability_real|floatformat:1 }},
-    probability_fake: {{ detection.probability_fake|floatformat:1 }}
+    probability_real: {{ detection.probability_real|floatformat:2 }},
+    probability_fake: {{ detection.probability_fake|floatformat:2 }}
 };
 initResultCharts();
+
+// Animate score bars on load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.score-bar-fill').forEach(bar => {
+        const targetWidth = bar.style.width;
+        bar.style.width = '0%';
+        setTimeout(() => { bar.style.width = targetWidth; }, 200);
+    });
+});
 </script>
 {% endblock %}

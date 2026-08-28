@@ -21,8 +21,11 @@
         // Image upload
         const imageDropZone = document.getElementById('imageDropZone');
         const imageInput = document.getElementById('imageInput');
+
         if (imageDropZone && imageInput) {
-            imageDropZone.addEventListener('click', () => imageInput.click());
+            imageDropZone.addEventListener('click', () => {
+                imageInput.click();
+            });
 
             imageDropZone.addEventListener('dragover', (e) => {
                 e.preventDefault();
@@ -48,8 +51,11 @@
         // Video upload
         const videoDropZone = document.getElementById('videoDropZone');
         const videoInput = document.getElementById('videoInput');
+
         if (videoDropZone && videoInput) {
-            videoDropZone.addEventListener('click', () => videoInput.click());
+            videoDropZone.addEventListener('click', () => {
+                videoInput.click();
+            });
 
             videoDropZone.addEventListener('dragover', (e) => {
                 e.preventDefault();
@@ -72,12 +78,72 @@
             });
         }
 
+        function showInputWarning(form, message) {
+            const existingAlert = form.querySelector('.custom-url-alert');
+            if (existingAlert) {
+                existingAlert.remove();
+            }
+
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'custom-url-alert';
+            alertDiv.style.setProperty('display', 'flex', 'important');
+            alertDiv.style.setProperty('align-items', 'center', 'important');
+            alertDiv.style.setProperty('background-color', '#f8d7da', 'important');
+            alertDiv.style.setProperty('border', '1px solid #f5c6cb', 'important');
+            alertDiv.style.setProperty('color', '#721c24', 'important');
+            alertDiv.style.setProperty('padding', '12px', 'important');
+            alertDiv.style.setProperty('border-radius', '8px', 'important');
+            alertDiv.style.setProperty('margin-top', '15px', 'important');
+            alertDiv.style.setProperty('margin-bottom', '15px', 'important');
+
+            alertDiv.innerHTML = `
+                <i class="fas fa-exclamation-circle me-2" style="font-size: 1.2rem; color: #721c24 !important;"></i>
+                <div style="font-weight: 600; color: #721c24 !important; font-family: sans-serif !important;">${message}</div>
+            `;
+
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                form.insertBefore(alertDiv, submitBtn);
+            } else {
+                form.appendChild(alertDiv);
+            }
+        }
+
         // Show processing modal on form submit
         const forms = document.querySelectorAll('form');
         forms.forEach(form => {
+            // Clear custom alerts when inputs change
+            const urlInput = form.querySelector('input[name="url"]');
+            if (urlInput) {
+                urlInput.addEventListener('input', () => {
+                    const existingAlert = form.querySelector('.custom-url-alert');
+                    if (existingAlert) existingAlert.remove();
+                });
+            }
+
             form.addEventListener('submit', function(e) {
                 const hasFile = form.querySelector('input[type="file"]');
                 const hasUrl = form.querySelector('input[name="url"]');
+
+                if (hasUrl) {
+                    const urlVal = hasUrl.value.trim().toLowerCase();
+                    const isYoutubeForm = form.action.includes('youtube');
+                    const isInstagramForm = form.action.includes('instagram');
+
+                    if (isYoutubeForm) {
+                        if (urlVal.includes('instagram.com') || (!urlVal.includes('youtube.com') && !urlVal.includes('youtu.be') && !urlVal.includes('youtube-nocookie.com'))) {
+                            e.preventDefault();
+                            showInputWarning(form, 'only use youtube link');
+                            return;
+                        }
+                    } else if (isInstagramForm) {
+                        if (urlVal.includes('youtube.com') || urlVal.includes('youtu.be') || !urlVal.includes('instagram.com')) {
+                            e.preventDefault();
+                            showInputWarning(form, 'only use instagram link');
+                            return;
+                        }
+                    }
+                }
 
                 if (hasFile && hasFile.files.length > 0) {
                     e.preventDefault();

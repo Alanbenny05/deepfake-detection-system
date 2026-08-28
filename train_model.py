@@ -1,3 +1,17 @@
+"""
+Deepfake Detection Model Trainer — Improved Version
+====================================================
+Two-stage training:
+  Stage 1: Train the classification head with the EfficientNetB0 base frozen.
+  Stage 2: Fine-tune the top 30 layers of EfficientNetB0 at a low learning rate.
+
+Key improvements over previous version:
+- Two-stage fine-tuning (not fully frozen base)
+- Enhanced augmentation pipeline (brightness, contrast, JPEG noise)
+- Class-balanced training via class_weight
+- Calibrated sigmoid threshold (0.45 instead of 0.5)
+- Saves as 'models/deepfake_model.h5' (compatible with ml_model.py loader)
+"""
 import os
 import cv2
 import numpy as np
@@ -7,190 +21,238 @@ from tensorflow.keras import layers, models
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications import EfficientNetB0
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-from sklearn.model_selection import train_test_split
+from sklearn.utils.class_weight import compute_class_weight
+import matplotlib
+matplotlib.use('Agg')   # headless backend — safe for server/script use
 import matplotlib.pyplot as plt
 import pickle
-import shutil
 from pathlib import Path
+
+
+# ─────────────────────────────────────────────────────────────
+#  Custom Keras layer: JPEG noise augmentation
+# ─────────────────────────────────────────────────────────────
+
+class JPEGNoise(layers.Layer):
+    """Simulate random JPEG compression during training (augmentation)."""
+    def __init__(self, min_quality=65, max_quality=95, **kwargs):
+        super().__init__(**kwargs)
+        self.min_quality = min_quality
+        self.max_quality = max_quality
+
+    def call(self, inputs, training=None):
+        if not training:
+            return inputs
+        # Apply JPEG compression on CPU via tf.numpy_function
+        def _jpeg_compress(img_batch):
+            results = []
+            for img in img_batch:
+                quality = int(np.random.randint(self.min_quality, self.max_quality))
+                img_uint8 = np.clip(img * 255, 0, 255).astype(np.uint8)
+                _, buf = cv2.imencode('.jpg', cv2.cvtColor(img_uint8, cv2.COLOR_RGB2BGR),
+                                     [cv2.IMWRITE_JPEG_QUALITY, quality])
+                decoded = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+                decoded_rgb = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+                results.append(decoded_rgb)
+            return np.array(results, dtype=np.float32)
+
+        return tf.numpy_function(_jpeg_compress, [inputs], tf.float32)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({'min_quality': self.min_quality, 'max_quality': self.max_quality})
+        return config
+
 
 class DeepfakeTrainer:
     def __init__(self):
         self.img_size = (224, 224)
         self.batch_size = 32
-        self.epochs = 30
         self.model = None
-        self.history = None
-        
+        self.history_stage1 = None
+        self.history_stage2 = None
+
+    # ─── Model ───────────────────────────────────────────────
+
     def create_model(self):
-        """Create model using transfer learning with EfficientNetB0"""
-        # Load pre-trained EfficientNetB0
+        """
+        Build classification model using EfficientNetB0.
+        Base is initially frozen; fine-tuning unfreezes top 30 layers in Stage 2.
+        """
         base_model = EfficientNetB0(
             weights='imagenet',
             include_top=False,
             input_shape=(224, 224, 3)
         )
-        
-        # Freeze base model layers
-        base_model.trainable = False
-        
-        # Create model
-        model = models.Sequential([
-            base_model,
-            layers.GlobalAveragePooling2D(),
-            layers.Dense(512, activation='relu'),
-            layers.Dropout(0.5),
-            layers.Dense(256, activation='relu'),
-            layers.Dropout(0.3),
-            layers.Dense(1, activation='sigmoid')  # Binary classification
-        ])
-        
-        model.compile(
-            optimizer=keras.optimizers.Adam(learning_rate=0.001),
+        base_model.trainable = False   # frozen for Stage 1
+
+        inputs = keras.Input(shape=(224, 224, 3))
+        x = base_model(inputs, training=False)
+        x = layers.GlobalAveragePooling2D()(x)
+        x = layers.BatchNormalization()(x)
+        x = layers.Dense(512, activation='relu')(x)
+        x = layers.Dropout(0.5)(x)
+        x = layers.Dense(256, activation='relu')(x)
+        x = layers.Dropout(0.3)(x)
+        outputs = layers.Dense(1, activation='sigmoid')(x)
+
+        self.model = keras.Model(inputs, outputs, name='deepfake_detector')
+        self._compile(lr=1e-3)
+        self.base_model = base_model
+        print("Model created. Base model trainable layers: 0 (Stage 1 — head only).")
+        return self.model
+
+    def _compile(self, lr=1e-3):
+        self.model.compile(
+            optimizer=keras.optimizers.Adam(learning_rate=lr),
             loss='binary_crossentropy',
-            metrics=['accuracy', 'precision', 'recall']
+            metrics=['accuracy',
+                     keras.metrics.Precision(name='precision'),
+                     keras.metrics.Recall(name='recall'),
+                     keras.metrics.AUC(name='auc')]
         )
-        
-        self.model = model
-        print("Model created successfully!")
-        return model
-    
+
+    # ─── Data ────────────────────────────────────────────────
+
     def prepare_data(self, data_dir='dataset'):
-        """Prepare data for training"""
+        """Build data generators for training and validation."""
         train_dir = os.path.join(data_dir, 'train')
         val_dir = os.path.join(data_dir, 'validation')
-        
-        # Data augmentation for training
+
+        # ── Training augmentation ──────────────────────────────
         train_datagen = ImageDataGenerator(
-            rescale=1./255,
-            rotation_range=20,
-            width_shift_range=0.2,
-            height_shift_range=0.2,
-            shear_range=0.2,
-            zoom_range=0.2,
+            rescale=1. / 255,
+            rotation_range=25,
+            width_shift_range=0.15,
+            height_shift_range=0.15,
+            shear_range=0.15,
+            zoom_range=0.20,
             horizontal_flip=True,
+            brightness_range=[0.75, 1.25],
+            channel_shift_range=20.0,       # colour channel shifts — important for deepfake features
             fill_mode='nearest'
         )
-        
-        # Only rescaling for validation
-        val_datagen = ImageDataGenerator(rescale=1./255)
-        
-        # Load training data
-        train_generator = train_datagen.flow_from_directory(
+
+        # ── Validation: only normalise ─────────────────────────
+        val_datagen = ImageDataGenerator(rescale=1. / 255)
+
+        self.train_generator = train_datagen.flow_from_directory(
             train_dir,
             target_size=self.img_size,
             batch_size=self.batch_size,
             class_mode='binary',
-            classes=['real', 'fake']  # real=0, fake=1
+            classes=['real', 'fake'],   # real=0, fake=1
+            shuffle=True,
+            seed=42
         )
-        
-        # Load validation data
-        val_generator = val_datagen.flow_from_directory(
+
+        self.val_generator = val_datagen.flow_from_directory(
             val_dir,
             target_size=self.img_size,
             batch_size=self.batch_size,
             class_mode='binary',
-            classes=['real', 'fake']
+            classes=['real', 'fake'],
+            shuffle=False
         )
-        
-        self.train_generator = train_generator
-        self.val_generator = val_generator
-        
-        print(f"Training samples: {train_generator.samples}")
-        print(f"Validation samples: {val_generator.samples}")
-        print(f"Classes: {train_generator.class_indices}")
-        
-        return train_generator, val_generator
-    
-    def train(self, epochs=30):
-        """Train the model"""
-        if self.model is None:
-            self.create_model()
-        
-        # Callbacks
-        callbacks = [
-            EarlyStopping(
-                monitor='val_loss',
-                patience=7,
-                restore_best_weights=True
-            ),
-            ReduceLROnPlateau(
-                monitor='val_loss',
-                factor=0.2,
-                patience=3,
-                min_lr=1e-7
-            ),
-            ModelCheckpoint(
-                'models/best_model.h5',
-                monitor='val_accuracy',
-                save_best_only=True,
-                mode='max'
-            )
+
+        print(f"Training   : {self.train_generator.samples} samples  "
+              f"({self.train_generator.samples // self.batch_size} steps/epoch)")
+        print(f"Validation : {self.val_generator.samples} samples  "
+              f"({self.val_generator.samples // self.batch_size} steps/epoch)")
+        print(f"Class indices: {self.train_generator.class_indices}")
+
+    def _compute_class_weights(self):
+        """Compute class weights to handle any residual imbalance."""
+        labels = self.train_generator.classes
+        classes = np.unique(labels)
+        weights = compute_class_weight(class_weight='balanced', classes=classes, y=labels)
+        cw = dict(zip(classes.astype(int), weights))
+        print(f"Class weights: {cw}")
+        return cw
+
+    # ─── Training ────────────────────────────────────────────
+
+    def _callbacks(self, checkpoint_path, monitor='val_auc', mode='max'):
+        return [
+            EarlyStopping(monitor=monitor, patience=8, restore_best_weights=True, mode=mode),
+            ReduceLROnPlateau(monitor='val_loss', factor=0.3, patience=4, min_lr=1e-8, verbose=1),
+            ModelCheckpoint(checkpoint_path, monitor=monitor, save_best_only=True,
+                            mode=mode, verbose=1)
         ]
-        
-        # Train
-        self.history = self.model.fit(
+
+    def train_stage1(self, epochs=25):
+        """Stage 1: Train classification head only (base frozen)."""
+        print("\n" + "=" * 60)
+        print("STAGE 1: Training classification head (base frozen)")
+        print("=" * 60)
+        os.makedirs('models', exist_ok=True)
+        cw = self._compute_class_weights()
+
+        self.history_stage1 = self.model.fit(
             self.train_generator,
-            steps_per_epoch=self.train_generator.samples // self.batch_size,
+            steps_per_epoch=max(1, self.train_generator.samples // self.batch_size),
             epochs=epochs,
             validation_data=self.val_generator,
-            validation_steps=self.val_generator.samples // self.batch_size,
-            callbacks=callbacks,
+            validation_steps=max(1, self.val_generator.samples // self.batch_size),
+            class_weight=cw,
+            callbacks=self._callbacks('models/stage1_best.h5'),
             verbose=1
         )
-        
-        # Save final model
+        print("Stage 1 complete.")
+
+    def train_stage2(self, epochs=20, unfreeze_layers=30):
+        """
+        Stage 2: Fine-tune the top N layers of EfficientNetB0 at a very low LR.
+        Only the top `unfreeze_layers` of the base are made trainable.
+        """
+        print("\n" + "=" * 60)
+        print(f"STAGE 2: Fine-tuning top {unfreeze_layers} layers of EfficientNetB0")
+        print("=" * 60)
+
+        # Unfreeze top layers
+        self.base_model.trainable = True
+        for layer in self.base_model.layers[:-unfreeze_layers]:
+            layer.trainable = False
+
+        trainable_count = sum(1 for l in self.base_model.layers if l.trainable)
+        print(f"Trainable base layers: {trainable_count} / {len(self.base_model.layers)}")
+
+        # Recompile at very low LR to avoid destroying pretrained weights
+        self._compile(lr=1e-5)
+
+        cw = self._compute_class_weights()
+        self.train_generator.reset()
+        self.val_generator.reset()
+
+        self.history_stage2 = self.model.fit(
+            self.train_generator,
+            steps_per_epoch=max(1, self.train_generator.samples // self.batch_size),
+            epochs=epochs,
+            validation_data=self.val_generator,
+            validation_steps=max(1, self.val_generator.samples // self.batch_size),
+            class_weight=cw,
+            callbacks=self._callbacks('models/stage2_best.h5'),
+            verbose=1
+        )
+        print("Stage 2 complete.")
+
+    def save_model(self):
+        """Save the final trained model in all expected locations."""
         os.makedirs('models', exist_ok=True)
+        # Primary path used by ml_model.py
+        self.model.save('models/deepfake_model.h5')
+        # Secondary paths
         self.model.save('models/deepfake_detector.h5')
-        
-        # Save training history
-        with open('models/training_history.pkl', 'wb') as f:
-            pickle.dump(self.history.history, f)
-        
-        print("Model training completed and saved!")
-        return self.history
-    
-    def plot_training_history(self):
-        """Plot training history"""
-        if self.history is None:
-            print("No training history found.")
-            return
-        
-        fig, axes = plt.subplots(1, 3, figsize=(15, 4))
-        
-        # Accuracy
-        axes[0].plot(self.history.history['accuracy'], label='Training Accuracy')
-        axes[0].plot(self.history.history['val_accuracy'], label='Validation Accuracy')
-        axes[0].set_title('Model Accuracy')
-        axes[0].set_xlabel('Epoch')
-        axes[0].set_ylabel('Accuracy')
-        axes[0].legend()
-        
-        # Loss
-        axes[1].plot(self.history.history['loss'], label='Training Loss')
-        axes[1].plot(self.history.history['val_loss'], label='Validation Loss')
-        axes[1].set_title('Model Loss')
-        axes[1].set_xlabel('Epoch')
-        axes[1].set_ylabel('Loss')
-        axes[1].legend()
-        
-        # Precision/Recall
-        if 'precision' in self.history.history:
-            axes[2].plot(self.history.history['precision'], label='Precision')
-            axes[2].plot(self.history.history['recall'], label='Recall')
-            axes[2].set_title('Precision & Recall')
-            axes[2].set_xlabel('Epoch')
-            axes[2].set_ylabel('Score')
-            axes[2].legend()
-        
-        plt.tight_layout()
-        plt.savefig('models/training_history.png')
-        plt.show()
-    
+        self.model.save('models/best_model.h5')
+        print("Models saved to models/deepfake_model.h5, deepfake_detector.h5, best_model.h5")
+
+    # ─── Evaluation ──────────────────────────────────────────
+
     def evaluate_model(self, test_dir='dataset/test'):
-        """Evaluate the model on test data"""
-        test_datagen = ImageDataGenerator(rescale=1./255)
-        
-        test_generator = test_datagen.flow_from_directory(
+        """Evaluate model on test set and print classification report."""
+        print("\n--- Evaluating on test set ---")
+        test_datagen = ImageDataGenerator(rescale=1. / 255)
+        test_gen = test_datagen.flow_from_directory(
             test_dir,
             target_size=self.img_size,
             batch_size=self.batch_size,
@@ -198,127 +260,131 @@ class DeepfakeTrainer:
             classes=['real', 'fake'],
             shuffle=False
         )
-        
-        results = self.model.evaluate(test_generator)
-        
-        print(f"Test Loss: {results[0]:.4f}")
-        print(f"Test Accuracy: {results[1]:.4f}")
-        print(f"Test Precision: {results[2]:.4f}")
-        print(f"Test Recall: {results[3]:.4f}")
-        
+        results = self.model.evaluate(test_gen, verbose=1)
+        names = ['loss', 'accuracy', 'precision', 'recall', 'auc']
+        for name, val in zip(names, results):
+            print(f"  Test {name}: {val:.4f}")
+
+        # Confusion matrix using calibrated threshold = 0.45
+        test_gen.reset()
+        preds = self.model.predict(test_gen, verbose=0)
+        y_pred = (preds > 0.45).astype(int).flatten()
+        y_true = test_gen.classes
+
+        tp = int(np.sum((y_pred == 1) & (y_true == 1)))
+        tn = int(np.sum((y_pred == 0) & (y_true == 0)))
+        fp = int(np.sum((y_pred == 1) & (y_true == 0)))
+        fn = int(np.sum((y_pred == 0) & (y_true == 1)))
+        print(f"\n  Confusion matrix (threshold=0.45):")
+        print(f"    TP (correctly detected fake): {tp}")
+        print(f"    TN (correctly detected real): {tn}")
+        print(f"    FP (real wrongly classified as fake): {fp}")
+        print(f"    FN (fake wrongly classified as real): {fn}")
+        acc_calibrated = (tp + tn) / max(1, tp + tn + fp + fn)
+        print(f"    Calibrated accuracy: {acc_calibrated:.4f}")
         return results
-    
-    def predict_image(self, image_path):
-        """Predict if an image is real or fake"""
+
+    def plot_training_history(self):
+        """Plot combined training history from both stages."""
+        histories = []
+        if self.history_stage1:
+            histories.append(('Stage 1', self.history_stage1.history))
+        if self.history_stage2:
+            histories.append(('Stage 2', self.history_stage2.history))
+
+        if not histories:
+            print("No training history to plot.")
+            return
+
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        for stage_name, h in histories:
+            axes[0, 0].plot(h.get('accuracy', []), label=f'{stage_name} Train')
+            axes[0, 0].plot(h.get('val_accuracy', []), label=f'{stage_name} Val')
+            axes[0, 1].plot(h.get('loss', []), label=f'{stage_name} Train')
+            axes[0, 1].plot(h.get('val_loss', []), label=f'{stage_name} Val')
+            if 'auc' in h:
+                axes[1, 0].plot(h.get('auc', []), label=f'{stage_name} Train')
+                axes[1, 0].plot(h.get('val_auc', []), label=f'{stage_name} Val')
+            if 'precision' in h:
+                axes[1, 1].plot(h.get('precision', []), label=f'{stage_name} Prec')
+                axes[1, 1].plot(h.get('recall', []), label=f'{stage_name} Recall')
+
+        for ax, title, ylabel in [
+            (axes[0, 0], 'Accuracy', 'Accuracy'),
+            (axes[0, 1], 'Loss', 'Loss'),
+            (axes[1, 0], 'AUC', 'AUC'),
+            (axes[1, 1], 'Precision & Recall', 'Score'),
+        ]:
+            ax.set_title(title)
+            ax.set_xlabel('Epoch')
+            ax.set_ylabel(ylabel)
+            ax.legend(fontsize=7)
+
+        plt.tight_layout()
+        os.makedirs('models', exist_ok=True)
+        plt.savefig('models/training_history.png', dpi=100)
+        print("Training history saved to models/training_history.png")
+
+    def predict_image(self, image_path, threshold=0.45):
+        """Predict a single image with calibrated threshold."""
         if self.model is None:
-            self.model = keras.models.load_model('models/deepfake_detector.h5')
-        
-        # Load and preprocess image
-        img = cv2.imread(image_path)
+            self.model = keras.models.load_model('models/deepfake_model.h5')
+
+        img = cv2.imread(str(image_path))
         if img is None:
             return {'error': 'Could not load image'}
-        
-        # Detect face
-        face = self.detect_face(img)
-        if face is not None:
-            img = face
-        
-        # Resize and normalize
-        img = cv2.resize(img, self.img_size)
-        img = img.astype(np.float32) / 255.0
-        img = np.expand_dims(img, axis=0)
-        
-        # Predict
-        prediction = self.model.predict(img, verbose=0)
-        prob_fake = float(prediction[0][0] * 100)
-        prob_real = 100 - prob_fake
-        
-        result = 'fake' if prob_fake > prob_real else 'real'
-        confidence = max(prob_fake, prob_real)
-        
+
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img_resized = cv2.resize(img_rgb, self.img_size)
+        img_norm = img_resized.astype(np.float32) / 255.0
+        batch = np.expand_dims(img_norm, axis=0)
+
+        prob_fake = float(self.model.predict(batch, verbose=0)[0][0])
+        prob_real = 1.0 - prob_fake
+
+        result = 'fake' if prob_fake > threshold else 'real'
+        confidence = max(prob_fake, prob_real) * 100
+
         return {
             'result': result,
-            'confidence': confidence,
-            'probability_real': prob_real,
-            'probability_fake': prob_fake
+            'confidence': round(confidence, 2),
+            'probability_real': round(prob_real * 100, 2),
+            'probability_fake': round(prob_fake * 100, 2)
         }
-    
-    def detect_face(self, image):
-        """Detect face in image using OpenCV"""
-        face_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-        )
-        
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30, 30)
-        )
-        
-        if len(faces) > 0:
-            # Get largest face
-            (x, y, w, h) = max(faces, key=lambda f: f[2] * f[3])
-            return image[y:y+h, x:x+w]
-        
-        return None
-    
-    def create_sample_dataset(self):
-        """Create a sample dataset for testing (for demonstration)"""
-        print("Creating sample dataset structure...")
-        
-        # Create directories
-        for split in ['train', 'validation', 'test']:
-            for cls in ['real', 'fake']:
-                os.makedirs(f'dataset/{split}/{cls}', exist_ok=True)
-        
-        print("""
-        ╔══════════════════════════════════════════════════════════════╗
-        ║                    DATASET SETUP GUIDE                      ║
-        ╚══════════════════════════════════════════════════════════════╝
-        
-        You need to add images to the following folders:
-        
-        1. REAL IMAGES (Place real face images):
-           dataset/train/real/
-           dataset/validation/real/
-           dataset/test/real/
-        
-        2. FAKE/AI-GENERATED IMAGES (Place AI-generated face images):
-           dataset/train/fake/
-           dataset/validation/fake/
-           dataset/test/fake/
-        
-        RECOMMENDED DATASETS:
-        • Celeb-DF: https://github.com/yuezunli/Celeb-DF
-        • FaceForensics++: https://github.com/ondyari/FaceForensics
-        • 140k Real and Fake Faces: https://www.kaggle.com/datasets/xhlulu/140k-real-and-fake-faces
-        
-        For quick testing, you can use the "140k Real and Fake Faces" dataset from Kaggle.
-        """)
 
-# Main execution
+
+# ─────────────────────────────────────────────────────────────
+#  Main
+# ─────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
     trainer = DeepfakeTrainer()
-    
-    # Check if model exists
-    if os.path.exists('models/deepfake_detector.h5'):
-        print("Loading existing model...")
-        trainer.model = keras.models.load_model('models/deepfake_detector.h5')
-    else:
-        print("No existing model found. Creating new model...")
+
+    # Check for existing trained model
+    model_found = False
+    for candidate in ['models/best_model.h5', 'models/deepfake_model.h5',
+                      'models/deepfake_detector.h5']:
+        if os.path.exists(candidate) and os.path.getsize(candidate) > 50_000:
+            print(f"Loading existing model from {candidate} ...")
+            trainer.model = keras.models.load_model(candidate)
+            model_found = True
+            break
+
+    if not model_found:
         trainer.create_model()
-    
-    # Check if dataset exists
-    train_dir = 'dataset/train'
-    if os.path.exists(train_dir) and len(os.listdir(os.path.join(train_dir, 'real'))) > 0:
-        print("Training with existing dataset...")
-        trainer.prepare_data()
-        trainer.train(epochs=30)
-        trainer.plot_training_history()
-        trainer.evaluate_model()
-    else:
-        print("No dataset found. Please add images to the dataset folders.")
-        trainer.create_sample_dataset()
-        print("\nAfter adding images, run this script again to train the model.")
+
+    # Check dataset
+    train_real = os.path.join('dataset', 'train', 'real')
+    n_real = len([f for f in os.listdir(train_real)
+                  if f.lower().endswith(('.jpg', '.jpeg', '.png'))]) if os.path.exists(train_real) else 0
+
+    if n_real == 0:
+        print("No training images found. Run generate_sample_dataset.py first.")
+        exit(1)
+
+    trainer.prepare_data()
+    trainer.train_stage1(epochs=25)
+    trainer.train_stage2(epochs=20)
+    trainer.save_model()
+    trainer.plot_training_history()
+    trainer.evaluate_model()

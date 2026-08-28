@@ -18,7 +18,7 @@
                                 <th>Preview</th>
                                 <th>Filename</th>
                                 <th>Type</th>
-                                <th>Result</th>
+                                <th>Classification</th>
                                 <th>Confidence</th>
                                 <th>Date</th>
                                 <th>Actions</th>
@@ -28,32 +28,50 @@
                             {% for detection in detections %}
                                 <tr>
                                     <td>
-                                        {% if detection.media.media_type == 'image' %}
-                                            <img src="{{ detection.media.file_path.url }}" 
+                                        {% if detection.media.media_type == 'image' and detection.media.media_url %}
+                                            <img src="{{ detection.media.media_url }}"
                                                  alt="Preview" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;">
                                         {% else %}
-                                            <i class="fas fa-video fa-2x text-info"></i>
+                                            {% if detection.media.media_type == 'youtube' %}
+                                                <i class="fab fa-youtube fa-2x text-danger"></i>
+                                            {% elif detection.media.media_type == 'instagram' %}
+                                                <i class="fab fa-instagram fa-2x text-warning"></i>
+                                            {% else %}
+                                                <i class="fas fa-video fa-2x text-info"></i>
+                                            {% endif %}
                                         {% endif %}
                                     </td>
-                                    <td>{{ detection.media.file_name|truncatechars:20 }}</td>
+                                    <td>{{ detection.media.file_name|truncatechars:22 }}</td>
                                     <td>
-                                        <span class="badge bg-info">{{ detection.media.media_type }}</span>
+                                        <span class="badge bg-secondary">{{ detection.media.media_type|capfirst }}</span>
                                     </td>
                                     <td>
                                         {% if detection.result == 'real' %}
-                                            <span class="badge bg-success">Real</span>
+                                            <span class="badge bg-success">
+                                                {% if detection.classification == 'HIGH_CONFIDENCE_REAL' %}High Confidence Real{% else %}Likely Real{% endif %}
+                                            </span>
+                                        {% elif detection.result == 'fake' %}
+                                            <span class="badge bg-danger">
+                                                {% if detection.classification == 'HIGH_CONFIDENCE_FAKE' %}High Confidence Fake{% else %}Likely Fake{% endif %}
+                                            </span>
                                         {% else %}
-                                            <span class="badge bg-danger">AI Generated</span>
+                                            <span class="badge bg-warning text-dark">Uncertain</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ detection.confidence|floatformat:1 }}%</td>
+                                    <td>
+                                        {% if detection.result == 'uncertain' %}
+                                            <span class="text-muted">—</span>
+                                        {% else %}
+                                            {{ detection.confidence|floatformat:1 }}%
+                                        {% endif %}
+                                    </td>
                                     <td>{{ detection.processed_at|date:"Y-m-d H:i" }}</td>
                                     <td>
-                                        <a href="{% url 'detector:result' detection.id %}" 
+                                        <a href="{% url 'detector:result' detection.id %}"
                                            class="btn btn-sm btn-primary">
                                             <i class="fas fa-eye"></i>
                                         </a>
-                                        <a href="{% url 'detector:generate_report' detection.id %}" 
+                                        <a href="{% url 'detector:generate_report' detection.id %}"
                                            class="btn btn-sm btn-success">
                                             <i class="fas fa-file-pdf"></i>
                                         </a>

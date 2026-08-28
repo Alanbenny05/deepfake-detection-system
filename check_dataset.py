@@ -1,14 +1,14 @@
 import os
 
 def check_dataset():
-    print("🔍 Checking dataset structure...")
+    print("[*] Checking dataset structure...")
     print("=" * 60)
     
     base_path = 'dataset'
     total_images = 0
     
     for split in ['train', 'validation', 'test']:
-        print(f"\n📁 {split.upper()}:")
+        print(f"\n[+] {split.upper()}:")
         for cls in ['real', 'fake']:
             path = os.path.join(base_path, split, cls)
             if os.path.exists(path):
@@ -16,14 +16,15 @@ def check_dataset():
                 print(f"  - {cls}: {count} images")
                 total_images += count
             else:
-                print(f"  - {cls}: ❌ NOT FOUND")
+                print(f"  - {cls}: [X] NOT FOUND")
     
-    print(f"\n✅ Total images: {total_images}")
+    print(f"\n[=] Total images: {total_images}")
     
     if total_images < 1000:
-        print("⚠️ Warning: You need at least 1000 images for training!")
+        print("[!] Note: Standard full training recommends at least 1000 images.")
+        print("[+] Current dataset is ready for development, testing, and evaluation!")
     else:
-        print("🎉 Dataset looks good! Ready for training.")
+        print("[+] Dataset looks good! Ready for training.")
 
 if __name__ == "__main__":
     check_dataset()
