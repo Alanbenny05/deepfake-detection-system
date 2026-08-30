@@ -18,6 +18,7 @@ If detection fails, the result is UNCERTAIN with a clear explanation.
 import json
 import logging
 import os
+from datetime import datetime
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -438,8 +439,11 @@ def generate_report(request, detection_id):
         messages.error(request, 'Unable to generate report file.')
         return redirect('detector:result', detection_id=detection_id)
 
+    dt_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    filename = f'deepfake_report_{dt_str}.pdf'
+
     response = FileResponse(open(report_path, 'rb'), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="deepfake_report_{detection_id}.pdf"'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
 

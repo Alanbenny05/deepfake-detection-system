@@ -17,97 +17,20 @@
         });
     }
 
+    function formatBytes(bytes, decimals = 1) {
+        if (!bytes || bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
     function setupUploadHandlers() {
-        // Image upload
-        const imageDropZone = document.getElementById('imageDropZone');
-        const imageInput = document.getElementById('imageInput');
-
-        if (imageDropZone && imageInput) {
-            imageDropZone.addEventListener('click', () => {
-                imageInput.click();
-            });
-
-            imageDropZone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                imageDropZone.classList.add('dragover');
-            });
-
-            imageDropZone.addEventListener('dragleave', () => {
-                imageDropZone.classList.remove('dragover');
-            });
-
-            imageDropZone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                imageDropZone.classList.remove('dragover');
-                imageInput.files = e.dataTransfer.files;
-                document.getElementById('imageUploadForm').submit();
-            });
-
-            imageInput.addEventListener('change', () => {
-                document.getElementById('imageUploadForm').submit();
-            });
-        }
-
-        // Video upload
-        const videoDropZone = document.getElementById('videoDropZone');
-        const videoInput = document.getElementById('videoInput');
-
-        if (videoDropZone && videoInput) {
-            videoDropZone.addEventListener('click', () => {
-                videoInput.click();
-            });
-
-            videoDropZone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                videoDropZone.classList.add('dragover');
-            });
-
-            videoDropZone.addEventListener('dragleave', () => {
-                videoDropZone.classList.remove('dragover');
-            });
-
-            videoDropZone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                videoDropZone.classList.remove('dragover');
-                videoInput.files = e.dataTransfer.files;
-                document.getElementById('videoUploadForm').submit();
-            });
-
-            videoInput.addEventListener('change', () => {
-                document.getElementById('videoUploadForm').submit();
-            });
-        }
-
-        function showInputWarning(form, message) {
-            const existingAlert = form.querySelector('.custom-url-alert');
-            if (existingAlert) {
-                existingAlert.remove();
-            }
-
-            const alertDiv = document.createElement('div');
-            alertDiv.className = 'custom-url-alert';
-            alertDiv.style.setProperty('display', 'flex', 'important');
-            alertDiv.style.setProperty('align-items', 'center', 'important');
-            alertDiv.style.setProperty('background-color', '#f8d7da', 'important');
-            alertDiv.style.setProperty('border', '1px solid #f5c6cb', 'important');
-            alertDiv.style.setProperty('color', '#721c24', 'important');
-            alertDiv.style.setProperty('padding', '12px', 'important');
-            alertDiv.style.setProperty('border-radius', '8px', 'important');
-            alertDiv.style.setProperty('margin-top', '15px', 'important');
-            alertDiv.style.setProperty('margin-bottom', '15px', 'important');
-
-            alertDiv.innerHTML = `
-                <i class="fas fa-exclamation-circle me-2" style="font-size: 1.2rem; color: #721c24 !important;"></i>
-                <div style="font-weight: 600; color: #721c24 !important; font-family: sans-serif !important;">${message}</div>
-            `;
-
-            const submitBtn = form.querySelector('button[type="submit"]');
-            if (submitBtn) {
-                form.insertBefore(alertDiv, submitBtn);
-            } else {
-                form.appendChild(alertDiv);
-            }
-        }
+        // If upload.html already loaded its custom script, do nothing
+        if (window.__uploadHandlerInitialized) return;
+        window.__uploadHandlerInitialized = true;
+    }
 
         // Show processing modal on form submit
         const forms = document.querySelectorAll('form');
@@ -116,8 +39,7 @@
             const urlInput = form.querySelector('input[name="url"]');
             if (urlInput) {
                 urlInput.addEventListener('input', () => {
-                    const existingAlert = form.querySelector('.custom-url-alert');
-                    if (existingAlert) existingAlert.remove();
+                    clearInputWarning(form);
                 });
             }
 
@@ -145,7 +67,13 @@
                     }
                 }
 
-                if (hasFile && hasFile.files.length > 0) {
+                if (hasFile) {
+                    if (!hasFile.files || hasFile.files.length === 0) {
+                        e.preventDefault();
+                        const mediaType = form.querySelector('input[name="media_type"]')?.value || 'file';
+                        showInputWarning(form, `Please select a ${mediaType} to analyze.`);
+                        return;
+                    }
                     e.preventDefault();
                     showProcessingModal(form);
                 } else if (hasUrl && hasUrl.value) {

@@ -281,10 +281,11 @@ def _get_image_dimensions(media):
 def generate_pdf_report(detection):
     """Generate an enhanced, detailed PDF report for a deepfake detection result."""
 
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     report_path = os.path.join(
         settings.MEDIA_ROOT,
         'reports',
-        f'report_{detection.id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+        f'deepfake_report_{timestamp}.pdf'
     )
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
 

@@ -2,6 +2,116 @@
 
 {% block title %}Upload Media - Deepfake Detection{% endblock %}
 
+{% block extra_css %}
+<style>
+.media-preview-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    animation: fadeInPreview 0.2s ease-out;
+}
+
+.media-preview-wrapper {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.media-preview-thumb-container {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    margin: 0 auto;
+    display: block;
+}
+
+.media-preview-media-crop {
+    width: 64px !important;
+    height: 64px !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
+    background-color: #0f172a !important;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22) !important;
+    border: 1.5px solid #ffffff !important;
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.media-preview-media-crop video,
+.media-preview-media-crop img,
+.media-preview-thumb {
+    width: 64px !important;
+    height: 64px !important;
+    max-width: 64px !important;
+    max-height: 64px !important;
+    min-width: 64px !important;
+    min-height: 64px !important;
+    object-fit: cover !important;
+    display: block !important;
+    border-radius: 9px !important;
+}
+
+.preview-remove-badge {
+    position: absolute !important;
+    top: -6px !important;
+    right: -6px !important;
+    width: 20px !important;
+    height: 20px !important;
+    border-radius: 50% !important;
+    background: rgba(30, 41, 59, 0.92) !important;
+    backdrop-filter: blur(4px) !important;
+    color: #ffffff !important;
+    border: 1.5px solid #ffffff !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 9px !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35) !important;
+    z-index: 20 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+}
+
+.preview-remove-badge:hover {
+    background: #ef4444 !important;
+    color: #ffffff !important;
+    transform: scale(1.15) !important;
+    box-shadow: 0 3px 10px rgba(239, 68, 68, 0.6) !important;
+}
+
+.video-play-indicator {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 22px !important;
+    height: 22px !important;
+    background: rgba(15, 23, 42, 0.72) !important;
+    backdrop-filter: blur(2px) !important;
+    color: #ffffff !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 8px !important;
+    pointer-events: none !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+    z-index: 10 !important;
+}
+
+.media-preview-info {
+    text-align: center;
+    max-width: 200px;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
     <h1 class="mb-4">
@@ -42,13 +152,34 @@
                                 {% csrf_token %}
                                 <input type="hidden" name="media_type" value="image">
                                 <div class="upload-zone" id="imageDropZone">
-                                    <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
-                                    <h5>Drag & Drop Image Here</h5>
-                                    <p class="text-muted">or click to browse</p>
+                                    <div id="imageDropPrompt">
+                                        <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+                                        <h5>Drag & Drop 1 Image Here</h5>
+                                        <p class="text-muted">or click to browse</p>
+                                        <p class="text-muted small mt-2"><i class="fas fa-file-image me-1"></i> Single image detection &bull; JPG, PNG, WEBP (Max 10MB)</p>
+                                    </div>
+                                    <div id="imagePreviewBox" class="media-preview-box" style="display: none;">
+                                        <div class="media-preview-wrapper">
+                                            <div class="media-preview-thumb-container">
+                                                <div class="media-preview-media-crop">
+                                                    <img id="imagePreviewImg" src="" alt="Preview" class="media-preview-thumb">
+                                                </div>
+                                                <button type="button" class="preview-remove-badge" id="imageRemoveBtn" title="Remove image" aria-label="Remove image">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                            <div class="media-preview-info mt-2">
+                                                <span id="imageFileName" class="text-truncate d-block fw-semibold text-dark small" style="max-width: 200px; font-size: 0.82rem;"></span>
+                                                <span id="imageFileSize" class="text-muted small" style="font-size: 0.75rem;"></span>
+                                            </div>
+                                        </div>
+                                        <div class="mt-1 text-muted small" style="font-size: 0.75rem;">
+                                            <i class="fas fa-sync-alt me-1"></i> Click to change image
+                                        </div>
+                                    </div>
                                     <input type="file" name="media_file" accept="image/*" style="display:none" id="imageInput">
-                                    <p class="text-muted small mt-2">Supported: JPG, PNG, WEBP (Max 10MB)</p>
                                 </div>
-                                <button type="submit" class="btn btn-primary mt-3 w-100" id="analyzeBtn">
+                                <button type="submit" class="btn btn-primary mt-3 w-100" id="analyzeImageBtn">
                                     <i class="fas fa-microchip"></i> Analyze Image
                                 </button>
                             </form>
@@ -60,13 +191,37 @@
                                 {% csrf_token %}
                                 <input type="hidden" name="media_type" value="video">
                                 <div class="upload-zone" id="videoDropZone">
-                                    <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
-                                    <h5>Drag & Drop Video Here</h5>
-                                    <p class="text-muted">or click to browse</p>
+                                    <div id="videoDropPrompt">
+                                        <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+                                        <h5>Drag & Drop 1 Video Here</h5>
+                                        <p class="text-muted">or click to browse</p>
+                                        <p class="text-muted small mt-2"><i class="fas fa-file-video me-1"></i> Single video detection &bull; MP4, AVI, MOV, MKV (Max 50MB)</p>
+                                    </div>
+                                    <div id="videoPreviewBox" class="media-preview-box" style="display: none;">
+                                        <div class="media-preview-wrapper">
+                                            <div class="media-preview-thumb-container">
+                                                <div class="media-preview-media-crop">
+                                                    <video id="videoPreviewEl" class="media-preview-thumb" muted playsinline preload="metadata"></video>
+                                                    <div class="video-play-indicator">
+                                                        <i class="fas fa-play"></i>
+                                                    </div>
+                                                </div>
+                                                <button type="button" class="preview-remove-badge" id="videoRemoveBtn" title="Remove video" aria-label="Remove video">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                            <div class="media-preview-info mt-2">
+                                                <span id="videoFileName" class="text-truncate d-block fw-semibold text-dark small" style="max-width: 200px; font-size: 0.82rem;"></span>
+                                                <span id="videoFileSize" class="text-muted small" style="font-size: 0.75rem;"></span>
+                                            </div>
+                                        </div>
+                                        <div class="mt-1 text-muted small" style="font-size: 0.75rem;">
+                                            <i class="fas fa-sync-alt me-1"></i> Click to change video
+                                        </div>
+                                    </div>
                                     <input type="file" name="media_file" accept="video/*" style="display:none" id="videoInput">
-                                    <p class="text-muted small mt-2">Supported: MP4, AVI, MOV, MKV (Max 50MB)</p>
                                 </div>
-                                <button type="submit" class="btn btn-primary mt-3 w-100">
+                                <button type="submit" class="btn btn-primary mt-3 w-100" id="analyzeVideoBtn">
                                     <i class="fas fa-microchip"></i> Analyze Video
                                 </button>
                             </form>
@@ -119,7 +274,7 @@
 </div>
 
 <!-- Processing Modal -->
-<div class="modal fade" id="processingModal" tabindex="-1">
+<div class="modal fade" id="processingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-body text-center py-4">
@@ -127,18 +282,379 @@
                     <span class="visually-hidden">Processing...</span>
                 </div>
                 <h5 class="mt-3">Analyzing Media...</h5>
-                <div class="progress mt-3">
+                <div class="progress mt-3" style="height: 10px; border-radius: 6px;">
                     <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div>
                 </div>
-                <p class="text-muted mt-2" id="statusMessage">Preprocessing media...</p>
+                <p class="text-muted mt-2 small" id="statusMessage">Preprocessing media...</p>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof setupUploadHandlers === 'function') setupUploadHandlers();
-});
+(function() {
+    function formatBytes(bytes, decimals = 1) {
+        if (!bytes || bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    function showInputWarning(form, message) {
+        const existingAlert = form.querySelector('.custom-url-alert');
+        if (existingAlert) existingAlert.remove();
+
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'custom-url-alert alert alert-danger mt-3 d-flex align-items-center';
+        alertDiv.style.cssText = 'border-radius: 12px; font-weight: 500; font-size: 0.9rem;';
+        alertDiv.innerHTML = `
+            <i class="fas fa-exclamation-circle me-2 fs-5"></i>
+            <div>${message}</div>
+        `;
+
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            form.insertBefore(alertDiv, submitBtn);
+        } else {
+            form.appendChild(alertDiv);
+        }
+    }
+
+    function clearInputWarning(form) {
+        if (!form) return;
+        const alert = form.querySelector('.custom-url-alert');
+        if (alert) alert.remove();
+    }
+
+    let isDetectionRunning = false;
+
+    function showProcessingModal(form) {
+        if (isDetectionRunning) return;
+        isDetectionRunning = true;
+
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Analyzing Media...';
+        }
+
+        const modalEl = document.getElementById('processingModal');
+        if (!modalEl || typeof bootstrap === 'undefined') {
+            HTMLFormElement.prototype.submit.call(form);
+            return;
+        }
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+
+        let progress = 0;
+        const progressBar = modalEl.querySelector('.progress-bar');
+        const statusMessage = modalEl.querySelector('#statusMessage');
+        const messages = [
+            'Preprocessing media...',
+            'Detecting faces & artifacts...',
+            'Extracting deep features...',
+            'Running CNN model...',
+            'Generating final verdict...'
+        ];
+
+        const interval = setInterval(function() {
+            progress += 20;
+            if (progressBar) progressBar.style.width = progress + '%';
+            const index = Math.floor(progress / 20) - 1;
+            if (index < messages.length && statusMessage) {
+                statusMessage.textContent = messages[index] || 'Processing...';
+            }
+
+            if (progress >= 100) {
+                clearInterval(interval);
+                HTMLFormElement.prototype.submit.call(form);
+            }
+        }, 500);
+    }
+
+    function setSingleFileInput(inputEl, file) {
+        try {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            inputEl.files = dt.files;
+        } catch (err) {
+            // Fallback for environments where DataTransfer assignment is constrained
+        }
+    }
+
+    function initUploadPage() {
+        // --- Image Upload Setup ---
+        const imageDropZone = document.getElementById('imageDropZone');
+        const imageInput = document.getElementById('imageInput');
+        const imageDropPrompt = document.getElementById('imageDropPrompt');
+        const imagePreviewBox = document.getElementById('imagePreviewBox');
+        const imagePreviewImg = document.getElementById('imagePreviewImg');
+        const imageRemoveBtn = document.getElementById('imageRemoveBtn');
+        const imageFileName = document.getElementById('imageFileName');
+        const imageFileSize = document.getElementById('imageFileSize');
+        const imageForm = document.getElementById('imageUploadForm');
+
+        function previewImageFile(file) {
+            if (!file) return;
+            clearInputWarning(imageForm);
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                if (imagePreviewImg) imagePreviewImg.src = e.target.result;
+                if (imageFileName) imageFileName.textContent = file.name;
+                if (imageFileSize) imageFileSize.textContent = formatBytes(file.size);
+
+                if (imageDropPrompt) imageDropPrompt.style.display = 'none';
+                if (imagePreviewBox) imagePreviewBox.style.display = 'flex';
+
+                // Automatically focus the Analyze button so pressing Enter triggers analysis
+                const analyzeBtn = document.getElementById('analyzeImageBtn');
+                if (analyzeBtn) analyzeBtn.focus();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearImageFile() {
+            if (imageInput) imageInput.value = '';
+            if (imagePreviewImg) imagePreviewImg.src = '';
+            if (imageFileName) imageFileName.textContent = '';
+            if (imageFileSize) imageFileSize.textContent = '';
+            if (imageDropPrompt) imageDropPrompt.style.display = 'block';
+            if (imagePreviewBox) imagePreviewBox.style.display = 'none';
+        }
+
+        if (imageDropZone && imageInput) {
+            imageInput.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+
+            imageDropZone.addEventListener('click', function(e) {
+                if (e.target.closest('#imageRemoveBtn')) return;
+                imageInput.click();
+            });
+
+            if (imageRemoveBtn) {
+                imageRemoveBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    clearImageFile();
+                });
+            }
+
+            imageDropZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                imageDropZone.classList.add('dragover');
+            });
+
+            imageDropZone.addEventListener('dragleave', function() {
+                imageDropZone.classList.remove('dragover');
+            });
+
+            imageDropZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                imageDropZone.classList.remove('dragover');
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    // Strictly enforce 1 file at a time
+                    const singleFile = e.dataTransfer.files[0];
+                    setSingleFileInput(imageInput, singleFile);
+                    previewImageFile(singleFile);
+                }
+            });
+
+            imageInput.addEventListener('change', function() {
+                if (imageInput.files && imageInput.files.length > 0) {
+                    previewImageFile(imageInput.files[0]);
+                }
+            });
+        }
+
+        // --- Video Upload Setup ---
+        const videoDropZone = document.getElementById('videoDropZone');
+        const videoInput = document.getElementById('videoInput');
+        const videoDropPrompt = document.getElementById('videoDropPrompt');
+        const videoPreviewBox = document.getElementById('videoPreviewBox');
+        const videoPreviewEl = document.getElementById('videoPreviewEl');
+        const videoRemoveBtn = document.getElementById('videoRemoveBtn');
+        const videoFileName = document.getElementById('videoFileName');
+        const videoFileSize = document.getElementById('videoFileSize');
+        const videoForm = document.getElementById('videoUploadForm');
+
+        let currentVideoBlobUrl = null;
+
+        function previewVideoFile(file) {
+            if (!file) return;
+            clearInputWarning(videoForm);
+
+            if (currentVideoBlobUrl) {
+                URL.revokeObjectURL(currentVideoBlobUrl);
+            }
+            currentVideoBlobUrl = URL.createObjectURL(file);
+
+            if (videoPreviewEl) {
+                videoPreviewEl.src = currentVideoBlobUrl;
+                videoPreviewEl.load();
+            }
+            if (videoFileName) videoFileName.textContent = file.name;
+            if (videoFileSize) videoFileSize.textContent = formatBytes(file.size);
+
+            if (videoDropPrompt) videoDropPrompt.style.display = 'none';
+            if (videoPreviewBox) videoPreviewBox.style.display = 'flex';
+
+            // Automatically focus the Analyze button so pressing Enter triggers analysis
+            const analyzeBtn = document.getElementById('analyzeVideoBtn');
+            if (analyzeBtn) analyzeBtn.focus();
+        }
+
+        function clearVideoFile() {
+            if (videoInput) videoInput.value = '';
+            if (currentVideoBlobUrl) {
+                URL.revokeObjectURL(currentVideoBlobUrl);
+                currentVideoBlobUrl = null;
+            }
+            if (videoPreviewEl) {
+                videoPreviewEl.pause();
+                videoPreviewEl.removeAttribute('src');
+                videoPreviewEl.load();
+            }
+            if (videoFileName) videoFileName.textContent = '';
+            if (videoFileSize) videoFileSize.textContent = '';
+            if (videoDropPrompt) videoDropPrompt.style.display = 'block';
+            if (videoPreviewBox) videoPreviewBox.style.display = 'none';
+        }
+
+        if (videoDropZone && videoInput) {
+            videoInput.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+
+            videoDropZone.addEventListener('click', function(e) {
+                if (e.target.closest('#videoRemoveBtn')) return;
+                videoInput.click();
+            });
+
+            if (videoRemoveBtn) {
+                videoRemoveBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    clearVideoFile();
+                });
+            }
+
+            videoDropZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                videoDropZone.classList.add('dragover');
+            });
+
+            videoDropZone.addEventListener('dragleave', function() {
+                videoDropZone.classList.remove('dragover');
+            });
+
+            videoDropZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                videoDropZone.classList.remove('dragover');
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    // Strictly enforce 1 file at a time
+                    const singleFile = e.dataTransfer.files[0];
+                    setSingleFileInput(videoInput, singleFile);
+                    previewVideoFile(singleFile);
+                }
+            });
+
+            videoInput.addEventListener('change', function() {
+                if (videoInput.files && videoInput.files.length > 0) {
+                    previewVideoFile(videoInput.files[0]);
+                }
+            });
+        }
+
+        // --- Global Enter Key Support ---
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.keyCode === 13) {
+                if (isDetectionRunning) return;
+                if (e.target && e.target.tagName === 'TEXTAREA') return;
+
+                // Don't override Enter if user is focused on the remove or clear buttons
+                if (e.target && (e.target.id === 'imageRemoveBtn' || e.target.id === 'videoRemoveBtn' || e.target.id === 'clear_youtube_btn' || e.target.id === 'clear_instagram_btn')) {
+                    return;
+                }
+
+                // If user is inside an input in the youtube/instagram tab, default form submission works, but let's ensure it triggers
+                const activeTabPane = document.querySelector('.tab-content .tab-pane.active');
+                if (activeTabPane) {
+                    const submitBtn = activeTabPane.querySelector('button[type="submit"]');
+                    if (submitBtn && document.activeElement !== submitBtn) {
+                        e.preventDefault();
+                        submitBtn.click();
+                    }
+                }
+            }
+        });
+
+        // --- Form Submissions (1 file detection at a time) ---
+        const forms = document.querySelectorAll('form');
+        forms.forEach(function(form) {
+            const urlInput = form.querySelector('input[name="url"]');
+            if (urlInput) {
+                urlInput.addEventListener('input', function() {
+                    clearInputWarning(form);
+                });
+            }
+
+            form.addEventListener('submit', function(e) {
+                if (isDetectionRunning) {
+                    e.preventDefault();
+                    return;
+                }
+
+                const hasFile = form.querySelector('input[type="file"]');
+                const hasUrl = form.querySelector('input[name="url"]');
+
+                if (hasUrl) {
+                    const urlVal = hasUrl.value.trim().toLowerCase();
+                    const isYoutubeForm = form.action.includes('youtube');
+                    const isInstagramForm = form.action.includes('instagram');
+
+                    if (isYoutubeForm) {
+                        if (urlVal.includes('instagram.com') || (!urlVal.includes('youtube.com') && !urlVal.includes('youtu.be') && !urlVal.includes('youtube-nocookie.com'))) {
+                            e.preventDefault();
+                            showInputWarning(form, 'Only YouTube links are supported in this tab.');
+                            return;
+                        }
+                    } else if (isInstagramForm) {
+                        if (urlVal.includes('youtube.com') || urlVal.includes('youtu.be') || !urlVal.includes('instagram.com')) {
+                            e.preventDefault();
+                            showInputWarning(form, 'Only Instagram Reel links are supported in this tab.');
+                            return;
+                        }
+                    }
+                }
+
+                if (hasFile) {
+                    if (!hasFile.files || hasFile.files.length === 0) {
+                        e.preventDefault();
+                        const mediaType = form.querySelector('input[name="media_type"]')?.value || 'file';
+                        showInputWarning(form, `Please select 1 ${mediaType} to analyze.`);
+                        return;
+                    }
+                    e.preventDefault();
+                    showProcessingModal(form);
+                } else if (hasUrl && hasUrl.value) {
+                    e.preventDefault();
+                    showProcessingModal(form);
+                }
+            });
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initUploadPage);
+    } else {
+        initUploadPage();
+    }
+})();
 </script>
 {% endblock %}
