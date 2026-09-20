@@ -59,20 +59,33 @@
     <!-- Charts -->
     <div class="row g-4">
         <div class="col-md-6">
-            <div class="card p-3">
-                <h5><i class="fas fa-chart-pie text-primary"></i> Detection Distribution</h5>
-                <canvas id="pieChart" height="300"></canvas>
-                {% if fake_count == 0 %}
-                    <div class="mt-3 p-3 rounded-3 bg-success bg-opacity-10 text-success">
-                        <strong>No AI Generated detections yet.</strong> The chart is fully green because all recorded detections are real.
+            <div class="card p-3 h-100">
+                <h5 class="mb-3"><i class="fas fa-chart-pie text-primary me-2"></i>Detection Distribution</h5>
+                <div style="position: relative; height: 280px; width: 100%;">
+                    <canvas id="pieChart"></canvas>
+                </div>
+                {% if total_uploads == 0 %}
+                    <div class="mt-3 p-3 rounded-3 bg-light text-muted text-center small">
+                        <i class="fas fa-info-circle me-1"></i> No detection data yet. Upload files to generate your distribution chart.
+                    </div>
+                {% elif fake_count == 0 %}
+                    <div class="mt-3 p-3 rounded-3 bg-success bg-opacity-10 text-success small">
+                        <i class="fas fa-check-circle me-1"></i> <strong>All detections are Real.</strong> No AI-generated media detected yet.
                     </div>
                 {% endif %}
             </div>
         </div>
         <div class="col-md-6">
-            <div class="card p-3">
-                <h5><i class="fas fa-chart-line text-success"></i> Detection Trend</h5>
-                <canvas id="lineChart" height="300"></canvas>
+            <div class="card p-3 h-100">
+                <h5 class="mb-3"><i class="fas fa-chart-line text-success me-2"></i>Detection Trend (Last 7 Days)</h5>
+                <div style="position: relative; height: 280px; width: 100%;">
+                    <canvas id="lineChart"></canvas>
+                </div>
+                {% if total_uploads == 0 %}
+                    <div class="mt-3 p-3 rounded-3 bg-light text-muted text-center small">
+                        <i class="fas fa-chart-area me-1"></i> Activity timeline will populate as media is scanned.
+                    </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -124,13 +137,144 @@
 
 {% block extra_js %}
 <script>
-window.dashboardData = {
-    real_count: {{ real_count }},
-    fake_count: {{ fake_count }},
-    chart_labels: {{ chart_labels|safe }},
-    chart_real_data: {{ chart_real_data|safe }},
-    chart_fake_data: {{ chart_fake_data|safe }}
-};
-initDashboardCharts();
+(function() {
+    function renderDashboardCharts() {
+        if (typeof Chart === 'undefined') {
+            setTimeout(renderDashboardCharts, 80);
+            return;
+        }
+
+        const realCount = Number({{ real_count|default:0 }});
+        const fakeCount = Number({{ fake_count|default:0 }});
+        const chartLabels = {{ chart_labels|safe }};
+        const chartRealData = {{ chart_real_data|safe }};
+        const chartFakeData = {{ chart_fake_data|safe }};
+
+        // 1. Detection Distribution Pie/Doughnut Chart
+        const pieEl = document.getElementById('pieChart');
+        if (pieEl) {
+            if (window._dashPieChartInstance) {
+                window._dashPieChartInstance.destroy();
+            }
+            const totalCount = realCount + fakeCount;
+            const hasData = totalCount > 0;
+            const ctx1 = pieEl.getContext('2d');
+            window._dashPieChartInstance = new Chart(ctx1, {
+                type: 'doughnut',
+                data: {
+                    labels: hasData ? ['Real', 'AI Generated'] : ['No Data Yet'],
+                    datasets: [{
+                        data: hasData ? [realCount, fakeCount] : [1],
+                        backgroundColor: hasData ? ['#16A34A', '#DC2626'] : ['#E2E8F0'],
+                        hoverBackgroundColor: hasData ? ['#15803d', '#b91c1c'] : ['#CBD5E1'],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '60%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                font: { size: 12, weight: '500' }
+                            }
+                        },
+                        tooltip: {
+                            enabled: hasData,
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const pct = totalCount > 0 ? ((value / totalCount) * 100).toFixed(1) : 0;
+                                    return ` ${context.label}: ${value} (${pct}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 2. Detection Trend Line Chart
+        const lineEl = document.getElementById('lineChart');
+        if (lineEl && chartLabels) {
+            if (window._dashLineChartInstance) {
+                window._dashLineChartInstance.destroy();
+            }
+            const ctx2 = lineEl.getContext('2d');
+            window._dashLineChartInstance = new Chart(ctx2, {
+                type: 'line',
+                data: {
+                    labels: chartLabels,
+                    datasets: [
+                        {
+                            label: 'Real',
+                            data: chartRealData,
+                            borderColor: '#16A34A',
+                            backgroundColor: 'rgba(22, 163, 74, 0.12)',
+                            pointBackgroundColor: '#16A34A',
+                            pointRadius: 4,
+                            fill: true,
+                            tension: 0.35
+                        },
+                        {
+                            label: 'AI Generated',
+                            data: chartFakeData,
+                            borderColor: '#DC2626',
+                            backgroundColor: 'rgba(220, 38, 38, 0.12)',
+                            pointBackgroundColor: '#DC2626',
+                            pointRadius: 4,
+                            fill: true,
+                            tension: 0.35
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                font: { size: 12, weight: '500' }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0,
+                                stepSize: 1
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', renderDashboardCharts);
+    } else {
+        renderDashboardCharts();
+    }
+})();
 </script>
 {% endblock %}

@@ -26,16 +26,33 @@
         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
     }
 
-    function setupUploadHandlers() {
-        // If upload.html already loaded its custom script, do nothing
-        if (window.__uploadHandlerInitialized) return;
-        window.__uploadHandlerInitialized = true;
+    function clearInputWarning(form) {
+        const existing = form.querySelector('.input-warning-alert');
+        if (existing) existing.remove();
     }
 
-        // Show processing modal on form submit
+    function showInputWarning(form, message) {
+        clearInputWarning(form);
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-warning alert-dismissible fade show input-warning-alert mt-2';
+        alert.innerHTML = `
+            <i class="fas fa-exclamation-circle me-2"></i>${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn && submitBtn.parentNode) {
+            submitBtn.parentNode.insertBefore(alert, submitBtn);
+        } else {
+            form.appendChild(alert);
+        }
+    }
+
+    function setupUploadHandlers() {
+        if (window.__uploadHandlerInitialized) return;
+        window.__uploadHandlerInitialized = true;
+
         const forms = document.querySelectorAll('form');
         forms.forEach(form => {
-            // Clear custom alerts when inputs change
             const urlInput = form.querySelector('input[name="url"]');
             if (urlInput) {
                 urlInput.addEventListener('input', () => {
@@ -49,19 +66,19 @@
 
                 if (hasUrl) {
                     const urlVal = hasUrl.value.trim().toLowerCase();
-                    const isYoutubeForm = form.action.includes('youtube');
-                    const isInstagramForm = form.action.includes('instagram');
+                    const isYoutubeForm = form.action && form.action.includes('youtube');
+                    const isInstagramForm = form.action && form.action.includes('instagram');
 
                     if (isYoutubeForm) {
-                        if (urlVal.includes('instagram.com') || (!urlVal.includes('youtube.com') && !urlVal.includes('youtu.be') && !urlVal.includes('youtube-nocookie.com'))) {
+                        if (urlVal && (urlVal.includes('instagram.com') || (!urlVal.includes('youtube.com') && !urlVal.includes('youtu.be') && !urlVal.includes('youtube-nocookie.com')))) {
                             e.preventDefault();
-                            showInputWarning(form, 'only use youtube link');
+                            showInputWarning(form, 'Only YouTube links are supported.');
                             return;
                         }
                     } else if (isInstagramForm) {
-                        if (urlVal.includes('youtube.com') || urlVal.includes('youtu.be') || !urlVal.includes('instagram.com')) {
+                        if (urlVal && (urlVal.includes('youtube.com') || urlVal.includes('youtu.be') || !urlVal.includes('instagram.com'))) {
                             e.preventDefault();
-                            showInputWarning(form, 'only use instagram link');
+                            showInputWarning(form, 'Only Instagram Reel links are supported.');
                             return;
                         }
                     }
@@ -138,27 +155,40 @@
     function initDashboardCharts() {
         if (!window.dashboardData) return;
         try {
-            // Pie
+            // Pie chart
             const ctx1El = document.getElementById('pieChart');
-            if (ctx1El) {
+            if (ctx1El && typeof Chart !== 'undefined') {
                 const ctx1 = ctx1El.getContext('2d');
+                const realCount = Number(window.dashboardData.real_count) || 0;
+                const fakeCount = Number(window.dashboardData.fake_count) || 0;
+                const hasData = (realCount + fakeCount) > 0;
+
                 new Chart(ctx1, {
                     type: 'pie',
                     data: {
-                        labels: ['Real', 'AI Generated'],
+                        labels: hasData ? ['Real', 'AI Generated'] : ['No Data Yet'],
                         datasets: [{
-                            data: [window.dashboardData.real_count || 0, window.dashboardData.fake_count || 0],
-                            backgroundColor: ['#16A34A', '#DC2626'],
+                            data: hasData ? [realCount, fakeCount] : [1],
+                            backgroundColor: hasData ? ['#16A34A', '#DC2626'] : ['#E2E8F0'],
                             borderWidth: 2
                         }]
                     },
-                    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom' },
+                            tooltip: {
+                                enabled: hasData
+                            }
+                        }
+                    }
                 });
             }
 
-            // Line
+            // Line chart
             const ctx2El = document.getElementById('lineChart');
-            if (ctx2El && window.dashboardData.chart_labels) {
+            if (ctx2El && window.dashboardData.chart_labels && typeof Chart !== 'undefined') {
                 const ctx2 = ctx2El.getContext('2d');
                 new Chart(ctx2, {
                     type: 'line',
@@ -167,7 +197,7 @@
                         datasets: [
                             {
                                 label: 'Real',
-                                data: window.dashboardData.chart_real_data,
+                                data: window.dashboardData.chart_real_data || [],
                                 borderColor: '#16A34A',
                                 backgroundColor: 'rgba(22, 163, 74, 0.1)',
                                 fill: true,
@@ -175,7 +205,7 @@
                             },
                             {
                                 label: 'AI Generated',
-                                data: window.dashboardData.chart_fake_data,
+                                data: window.dashboardData.chart_fake_data || [],
                                 borderColor: '#DC2626',
                                 backgroundColor: 'rgba(220, 38, 38, 0.1)',
                                 fill: true,
@@ -185,8 +215,17 @@
                     },
                     options: {
                         responsive: true,
+                        maintainAspectRatio: false,
                         plugins: { legend: { position: 'bottom' } },
-                        scales: { y: { beginAtZero: true } }
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1,
+                                    precision: 0
+                                }
+                            }
+                        }
                     }
                 });
             }
@@ -199,7 +238,7 @@
         if (!window.resultData) return;
         try {
             const ctxEl = document.getElementById('resultPieChart');
-            if (!ctxEl) return;
+            if (!ctxEl || typeof Chart === 'undefined') return;
             const ctx = ctxEl.getContext('2d');
             new Chart(ctx, {
                 type: 'pie',
@@ -211,14 +250,20 @@
                         borderWidth: 3
                     }]
                 },
-                options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
             });
         } catch (e) {
             console.error('Error initializing result chart', e);
         }
     }
 
-    // Expose functions to global scope so inline templates can call them after setting window data
+    // Expose functions to global scope
+    window.clearInputWarning = clearInputWarning;
+    window.showInputWarning = showInputWarning;
     window.setupUploadHandlers = setupUploadHandlers;
     window.initDashboardCharts = initDashboardCharts;
     window.initResultCharts = initResultCharts;
@@ -227,6 +272,7 @@
         autoHideAlerts();
         addFadeIn();
         setupPasswordToggles();
+        setupUploadHandlers();
     });
 
 })();
