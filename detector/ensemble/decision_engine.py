@@ -31,45 +31,45 @@ logger = logging.getLogger(__name__)
 #  Configurable weights — edit here to tune the system
 # ─────────────────────────────────────────────────────────────────────────────
 
-#  Active CNN mode weights (when trained deep neural net is loaded)
+#  Active CNN mode weights (when trained deep neural net / classifier is loaded)
 #  Must sum to 1.0
 WEIGHTS_CNN_MODE = {
-    'cnn':        0.75,   # Primary model gets 75% weight
-    'forensic':   0.15,   # Heuristics get 15%
-    'provenance': 0.10,   # Provenance gets 10%
+    'cnn':        0.80,   # Primary ML model gets 80% weight
+    'forensic':   0.12,   # Heuristics get 12%
+    'provenance': 0.08,   # Provenance gets 8%
 }
 WEIGHTS_CNN_MODE_NO_PROV = {
-    'cnn':        0.80,   # Primary model gets 80% weight
-    'forensic':   0.20,   # Heuristics get 20%
+    'cnn':        0.85,   # Primary ML model gets 85% weight
+    'forensic':   0.15,   # Heuristics get 15%
 }
 
 #  Heuristic mode weights (when falling back to handcrafted features)
 #  Must sum to 1.0
 WEIGHTS_HEURISTIC_MODE = {
-    'cnn':        0.35,   # CNN heuristic gets 35% weight
-    'forensic':   0.45,   # Main forensics get 45%
-    'provenance': 0.20,   # Provenance gets 20%
+    'cnn':        0.55,   # CNN heuristic gets 55% weight
+    'forensic':   0.30,   # Main forensics get 30%
+    'provenance': 0.15,   # Provenance gets 15%
 }
 WEIGHTS_HEURISTIC_MODE_NO_PROV = {
-    'cnn':        0.45,   # CNN heuristic gets 45% weight
-    'forensic':   0.55,   # Main forensics get 55%
+    'cnn':        0.65,   # CNN heuristic gets 65% weight
+    'forensic':   0.35,   # Main forensics get 35%
 }
 
 #  Classification thresholds (fake probability)
 THRESHOLDS = {
-    'high_confidence_fake': 0.80,
-    'likely_fake':          0.60,
-    'uncertain_high':       0.60,   # above this in uncertain zone = leans fake
-    'uncertain_low':        0.40,   # below this in uncertain zone = leans real
-    'likely_real':          0.40,
-    'high_confidence_real': 0.20,
+    'high_confidence_fake': 0.75,
+    'likely_fake':          0.58,
+    'uncertain_high':       0.58,   # above this in uncertain zone = leans fake
+    'uncertain_low':        0.42,   # below this in uncertain zone = leans real
+    'likely_real':          0.42,
+    'high_confidence_real': 0.25,
 }
 
-#  If CNN and forensic scores differ by more than this, flag as uncertain
-CONTRADICTION_THRESHOLD = 0.35
+#  Polar contradiction check threshold for heuristic mode
+CONTRADICTION_THRESHOLD = 0.55
 
 #  Minimum confidence to escape UNCERTAIN towards a definitive result
-MIN_CONFIDENCE_REQUIRED = 0.60
+MIN_CONFIDENCE_REQUIRED = 0.55
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -237,14 +237,15 @@ def _decide_internal(
     # ── Contradiction check ───────────────────────────────────────────────────
     contradictory = False
     if cnn_mode == 'heuristic' and cnn_score is not None and forensic_score is not None:
-        if abs(cnn_score - forensic_score) > CONTRADICTION_THRESHOLD:
+        # Only flag contradiction when both heuristic signals are strongly in opposite directions
+        if (cnn_score >= 0.75 and forensic_score <= 0.25) or (cnn_score <= 0.25 and forensic_score >= 0.75):
             contradictory = True
             logger.info(
-                "Contradictory signals: CNN=%.3f Forensic=%.3f -> UNCERTAIN",
+                "Polar contradictory signals: CNN=%.3f Forensic=%.3f -> UNCERTAIN",
                 cnn_score, forensic_score
             )
 
-    # ── No-face penalty: cap confidence when no face was detected ─────────────
+    # ── No-face penalty flag (adjusts confidence without forcing UNCERTAIN) ───
     face_penalty = not face_found and cnn_mode == 'heuristic'
 
     # ── Classify base tier ───────────────────────────────────────────────────
@@ -259,40 +260,43 @@ def _decide_internal(
     else:
         classification = 'UNCERTAIN'
 
-    # ── Active CNN Safety Overrides ──────────────────────────────────────────
-    if cnn_mode == 'cnn' and cnn_score is not None:
-        if cnn_score >= 0.60:
-            # High neural net suspicion -> must be classified at least as likely fake
+    # ── Active CNN / ML Safety Overrides ──────────────────────────────────
+    if cnn_score is not None:
+        if cnn_score >= 0.75:
             if classification in ('HIGH_CONFIDENCE_REAL', 'LIKELY_REAL', 'UNCERTAIN'):
-                classification = 'LIKELY_FAKE'
-        elif cnn_score >= 0.45:
-            # Neural net suspicion -> must be classified at least as uncertain
+                classification = 'HIGH_CONFIDENCE_FAKE' if final_score >= 0.70 else 'LIKELY_FAKE'
+        elif cnn_score >= 0.58:
             if classification in ('HIGH_CONFIDENCE_REAL', 'LIKELY_REAL'):
-                classification = 'UNCERTAIN'
+                classification = 'LIKELY_FAKE'
+        elif cnn_score <= 0.25:
+            if classification in ('HIGH_CONFIDENCE_FAKE', 'LIKELY_FAKE', 'UNCERTAIN'):
+                classification = 'HIGH_CONFIDENCE_REAL' if final_score <= 0.30 else 'LIKELY_REAL'
+        elif cnn_score <= 0.42:
+            if classification in ('HIGH_CONFIDENCE_FAKE', 'LIKELY_FAKE'):
+                classification = 'LIKELY_REAL'
 
-    # ── Contradiction and No-face Overrides ────────────────────────────────────
+    # ── Contradiction Override ────────────────────────────────────────────────
     if contradictory:
-        classification = 'UNCERTAIN'
-    elif face_penalty:
         classification = 'UNCERTAIN'
 
     # ── Calculate confidence based on final classification ───────────────────
     if classification == 'HIGH_CONFIDENCE_FAKE':
         confidence = _score_to_confidence(final_score, high_end=True)
     elif classification == 'LIKELY_FAKE':
-        confidence = _score_to_confidence(final_score, high_end=True)
+        confidence = _score_to_confidence(final_score, high_end=False)
     elif classification == 'HIGH_CONFIDENCE_REAL':
         confidence = _score_to_confidence(1.0 - final_score, high_end=True)
     elif classification == 'LIKELY_REAL':
-        confidence = _score_to_confidence(1.0 - final_score, high_end=True)
+        confidence = _score_to_confidence(1.0 - final_score, high_end=False)
     else:
         # Uncertain
         if contradictory:
             confidence = _contradictory_confidence(cnn_score, forensic_score)
-        elif face_penalty:
-            confidence = min(55.0, abs(final_score - 0.50) * 200.0 + 30.0)
         else:
-            confidence = max(30.0, 50.0 - abs(final_score - 0.50) * 40.0)
+            confidence = max(35.0, 50.0 - abs(final_score - 0.50) * 30.0)
+
+    if face_penalty:
+        confidence = min(confidence, 70.0)
 
     # ── Build explanation ─────────────────────────────────────────────────────
     explanation = _build_explanation(
@@ -333,10 +337,10 @@ def _decide_internal(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _score_to_confidence(score, high_end=False):
-    """Map a directional score [0.5,1] to a confidence percentage [50,95]."""
-    # score is the probability of the predicted class
-    confidence = 50.0 + (score - 0.5) * 90.0
-    return float(np.clip(confidence, 50.0, 95.0))
+    """Map a directional score [0.5,1] to a confidence percentage [55,96]."""
+    directional = max(0.5, float(score))
+    confidence = 55.0 + (directional - 0.5) * 80.0
+    return float(np.clip(confidence, 55.0, 96.0))
 
 
 def _contradictory_confidence(cnn_score, forensic_score):

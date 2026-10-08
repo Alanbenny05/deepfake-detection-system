@@ -336,15 +336,26 @@
         if (isDetectionRunning) return;
         isDetectionRunning = true;
 
+        // Disable all submit buttons immediately to prevent duplicate requests
+        document.querySelectorAll('button[type="submit"]').forEach(function(btn) {
+            btn.disabled = true;
+        });
+
         const submitBtn = form.querySelector('button[type="submit"]');
         if (submitBtn) {
-            submitBtn.disabled = true;
             submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Analyzing Media...';
+        }
+
+        let submitted = false;
+        function doSubmit() {
+            if (submitted) return;
+            submitted = true;
+            HTMLFormElement.prototype.submit.call(form);
         }
 
         const modalEl = document.getElementById('processingModal');
         if (!modalEl || typeof bootstrap === 'undefined') {
-            HTMLFormElement.prototype.submit.call(form);
+            doSubmit();
             return;
         }
         const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
@@ -371,7 +382,7 @@
 
             if (progress >= 100) {
                 clearInterval(interval);
-                HTMLFormElement.prototype.submit.call(form);
+                doSubmit();
             }
         }, 500);
     }

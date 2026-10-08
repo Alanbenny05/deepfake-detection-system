@@ -159,6 +159,21 @@ def upload_media(request):
             messages.error(request, error)
             return render(request, 'detector/upload.html')
 
+        # Deduplication check: if this user uploaded this exact file in the last 8s, redirect to existing result
+        from django.utils import timezone
+        import datetime
+        recent_cutoff = timezone.now() - datetime.timedelta(seconds=8)
+        recent_media = Media.objects.filter(
+            user=request.user,
+            file_name=media_file.name,
+            file_size=media_file.size,
+            uploaded_at__gte=recent_cutoff
+        ).order_by('-uploaded_at').first()
+
+        if recent_media and hasattr(recent_media, 'detection') and recent_media.detection:
+            logger.info("Duplicate upload suppressed for %s (detection #%d)", media_file.name, recent_media.detection.id)
+            return redirect('detector:result', detection_id=recent_media.detection.id)
+
         # Save file to media storage
         fs = FileSystemStorage()
         filename  = fs.save(f'uploads/{media_file.name}', media_file)
@@ -219,6 +234,21 @@ def youtube_detection(request):
             messages.error(request, 'only use youtube link')
             return redirect('detector:upload')
 
+        # Deduplication check
+        from django.utils import timezone
+        import datetime
+        recent_cutoff = timezone.now() - datetime.timedelta(seconds=8)
+        recent_media = Media.objects.filter(
+            user=request.user,
+            media_type='youtube',
+            url=url,
+            uploaded_at__gte=recent_cutoff
+        ).order_by('-uploaded_at').first()
+
+        if recent_media and hasattr(recent_media, 'detection') and recent_media.detection:
+            logger.info("Duplicate YouTube submission suppressed for %s (detection #%d)", url, recent_media.detection.id)
+            return redirect('detector:result', detection_id=recent_media.detection.id)
+
         logger.info("YouTube detection requested: %s by %s", url, request.user.username)
 
         # Create a placeholder Media record immediately
@@ -251,10 +281,6 @@ def youtube_detection(request):
         if title and title != 'YouTube Video':
             media.file_name = title[:255]
             media.save(update_fields=['file_name'])
-
-        # Update file_path if a file was downloaded
-        # (DetectionService cleans up temp files, so the stored file won't be accessible
-        #  unless we copy it first — here we just proceed with the detection result)
 
         if result.get('is_download_error'):
             messages.error(request, result.get('explanation') or result.get('error', 'YouTube download failed.'))
@@ -295,6 +321,21 @@ def instagram_detection(request):
         if 'youtube.com' in url_lower or 'youtu.be' in url_lower or 'instagram.com' not in url_lower:
             messages.error(request, 'only use instagram link')
             return redirect('detector:upload')
+
+        # Deduplication check
+        from django.utils import timezone
+        import datetime
+        recent_cutoff = timezone.now() - datetime.timedelta(seconds=8)
+        recent_media = Media.objects.filter(
+            user=request.user,
+            media_type='instagram',
+            url=url,
+            uploaded_at__gte=recent_cutoff
+        ).order_by('-uploaded_at').first()
+
+        if recent_media and hasattr(recent_media, 'detection') and recent_media.detection:
+            logger.info("Duplicate Instagram submission suppressed for %s (detection #%d)", url, recent_media.detection.id)
+            return redirect('detector:result', detection_id=recent_media.detection.id)
 
         logger.info("Instagram detection requested: %s by %s", url, request.user.username)
 

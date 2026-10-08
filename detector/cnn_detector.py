@@ -61,15 +61,19 @@ class CNNDetector:
 
     @property
     def model_available(self):
-        """True if the underlying TF model is loaded (not heuristic mode)."""
-        return self._detector is not None and self._detector.model is not None
+        """True if either the underlying TF model or trained classifier pipeline is loaded."""
+        tf_loaded = self._detector is not None and self._detector.model is not None
+        classifier_loaded = self._classifier is not None
+        return tf_loaded or classifier_loaded
 
     @property
     def mode(self):
         """'cnn' | 'heuristic' | 'unavailable'"""
-        if self._detector is None:
+        if self._detector is None and self._classifier is None:
             return 'unavailable'
-        return 'cnn' if self._detector.model is not None else 'heuristic'
+        if (self._detector is not None and self._detector.model is not None) or (self._classifier is not None):
+            return 'cnn'
+        return 'heuristic'
 
     def predict_image(self, image_input, face_crop=None):
         """

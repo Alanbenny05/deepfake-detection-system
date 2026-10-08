@@ -6,6 +6,6 @@ from detector.models import Detection
 def history_view(request):
     detections = Detection.objects.filter(
         media__user=request.user
-    ).order_by('-processed_at')
+    ).order_by('-processed_at').select_related('media')
     
     return render(request, 'detector/history.html', {'detections': detections})

@@ -48,57 +48,7 @@
     }
 
     function setupUploadHandlers() {
-        if (window.__uploadHandlerInitialized) return;
-        window.__uploadHandlerInitialized = true;
-
-        const forms = document.querySelectorAll('form');
-        forms.forEach(form => {
-            const urlInput = form.querySelector('input[name="url"]');
-            if (urlInput) {
-                urlInput.addEventListener('input', () => {
-                    clearInputWarning(form);
-                });
-            }
-
-            form.addEventListener('submit', function(e) {
-                const hasFile = form.querySelector('input[type="file"]');
-                const hasUrl = form.querySelector('input[name="url"]');
-
-                if (hasUrl) {
-                    const urlVal = hasUrl.value.trim().toLowerCase();
-                    const isYoutubeForm = form.action && form.action.includes('youtube');
-                    const isInstagramForm = form.action && form.action.includes('instagram');
-
-                    if (isYoutubeForm) {
-                        if (urlVal && (urlVal.includes('instagram.com') || (!urlVal.includes('youtube.com') && !urlVal.includes('youtu.be') && !urlVal.includes('youtube-nocookie.com')))) {
-                            e.preventDefault();
-                            showInputWarning(form, 'Only YouTube links are supported.');
-                            return;
-                        }
-                    } else if (isInstagramForm) {
-                        if (urlVal && (urlVal.includes('youtube.com') || urlVal.includes('youtu.be') || !urlVal.includes('instagram.com'))) {
-                            e.preventDefault();
-                            showInputWarning(form, 'Only Instagram Reel links are supported.');
-                            return;
-                        }
-                    }
-                }
-
-                if (hasFile) {
-                    if (!hasFile.files || hasFile.files.length === 0) {
-                        e.preventDefault();
-                        const mediaType = form.querySelector('input[name="media_type"]')?.value || 'file';
-                        showInputWarning(form, `Please select a ${mediaType} to analyze.`);
-                        return;
-                    }
-                    e.preventDefault();
-                    showProcessingModal(form);
-                } else if (hasUrl && hasUrl.value) {
-                    e.preventDefault();
-                    showProcessingModal(form);
-                }
-            });
-        });
+        // Upload form logic is handled with custom animations and controls in upload.html
     }
 
     function setupPasswordToggles() {
@@ -118,38 +68,6 @@
                 }
             });
         });
-    }
-
-    function showProcessingModal(form) {
-        const modalEl = document.getElementById('processingModal');
-        if (!modalEl) { form.submit(); return; }
-        const modal = new bootstrap.Modal(modalEl);
-        modal.show();
-
-        let progress = 0;
-        const progressBar = modalEl.querySelector('.progress-bar');
-        const statusMessage = modalEl.querySelector('#statusMessage');
-        const messages = [
-            'Preprocessing media...',
-            'Detecting faces...',
-            'Extracting features...',
-            'Running CNN model...',
-            'Generating results...'
-        ];
-
-        const interval = setInterval(() => {
-            progress += 20;
-            if (progressBar) progressBar.style.width = `${progress}%`;
-            const index = Math.floor(progress / 20) - 1;
-            if (index < messages.length && statusMessage) {
-                statusMessage.textContent = messages[index] || 'Processing...';
-            }
-
-            if (progress >= 100) {
-                clearInterval(interval);
-                form.submit();
-            }
-        }, 800);
     }
 
     function initDashboardCharts() {
